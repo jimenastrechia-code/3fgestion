@@ -1032,11 +1032,11 @@ export default function App() {
                   <button onClick={()=>setEditingStudId(null)} style={{padding:"8px 10px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:8,cursor:"pointer"}}>✕</button>
                 </div>:<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={()=>{setSelStudId(stud.id);setView("student");}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>{stud.name}</span>
                       {stud.ci&&<span style={{fontSize:11,color:"#8b5cf6",background:"#f5f3ff",padding:"1px 8px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {stud.ci}</span>}
-                      {stud.cohorte&&<span style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",padding:"1px 8px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>Cohorte {stud.cohorte}</span>}
                       {stud.liceo&&<LiceoChip liceo={stud.liceo} size="sm"/>}
+                      {stud.cohorte&&<span style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",padding:"1px 8px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>{stud.cohorte}</span>}
                       <button onClick={e=>{e.stopPropagation();setEditingStudId(stud.id);setEditStudName(stud.name);}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                         <i className="ti ti-pencil" style={{fontSize:11}}/>Renombrar
                       </button>
@@ -1047,7 +1047,6 @@ export default function App() {
                     <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                       <span style={{fontSize:12,color:"#9ca3af"}}>{sv.length} gestión{sv.length!==1?"es":""}{last?` · última: ${fmt(last.date)}`:" · sin gestiones"}</span>
                       {sr>0&&<span style={{fontSize:11,color:"#166534",background:"#f0fdf4",padding:"1px 7px",borderRadius:10,border:"1px solid #86efac",fontWeight:600}}>✓ {sr} resueltos</span>}
-                      {ap.map(a=><LiceoChip key={a} liceo={a} size="sm"/>)}
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
@@ -1075,8 +1074,8 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                   <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>{selStud.name}</h1>
                   {selStud.ci&&<span style={{fontSize:12,color:"#8b5cf6",background:"#f5f3ff",padding:"2px 10px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {selStud.ci}</span>}
-                  {selStud.cohorte&&<span style={{fontSize:12,color:"#0369a1",background:"#f0f9ff",padding:"2px 10px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>Cohorte {selStud.cohorte}</span>}
                   {selStud.liceo&&<LiceoChip liceo={selStud.liceo}/>}
+                  {selStud.cohorte&&<span style={{fontSize:12,color:"#0369a1",background:"#f0f9ff",padding:"2px 10px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>{selStud.cohorte}</span>}
                   <button onClick={()=>setEditCIModal(selStud)} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                     <i className="ti ti-id-badge" style={{fontSize:11}}/>{selStud.ci?"Editar CI":"+ CI"}
                   </button>
