@@ -46,6 +46,12 @@ const uCfg  = uid          => doc(db,`users/${uid}/config/main`);
 const fbSet    = async (uid,col,id,data) => { try { await setDoc(uDoc(uid,col,id),data); } catch(e){console.error(e);} };
 const fbSetCfg = async (uid,data)        => { try { await setDoc(uCfg(uid),data); }       catch(e){console.error(e);} };
 
+/* ── Shared students collection (all users) ── */
+const studentsCol = () => collection(db,"students");
+const studentDoc  = id => doc(db,`students/${id}`);
+const fbSetStudent = async (id,data) => { try { await setDoc(studentDoc(id),data); } catch(e){console.error(e);} };
+const fbDelStudent = async id => { try { await deleteDoc(studentDoc(id)); } catch(e){console.error(e);} };
+
 async function compressImage(file) {
   return new Promise(resolve => {
     const r = new FileReader();
@@ -275,23 +281,32 @@ function NavBtn({icon,label,active,badge,onClick,sub,color}) {
 }
 
 function NewStudentModal({onConfirm,onCancel}) {
-  const [nombre,setNombre]=useState(""); const [ci,setCi]=useState(""); const ok=nombre.trim().length>1;
+  const [nombre,setNombre]=useState(""); const [ci,setCi]=useState(""); const [liceo,setLiceo]=useState(""); const [cohorte,setCohorte]=useState(""); const ok=nombre.trim().length>1;
+  const inp={width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"};
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:400,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
+    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:420,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
       <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:16}}>Nuevo alumno</div>
       <div style={{marginBottom:12}}>
         <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>Nombre completo *</label>
-        <input autoFocus value={nombre} onChange={e=>setNombre(e.target.value)} onKeyDown={e=>e.key==="Enter"&&ok&&onConfirm(nombre.trim(),ci.trim())}
-          placeholder="Ej: Juan Pérez" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}/>
+        <input autoFocus value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Juan Pérez" style={inp}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>CI (opcional)</label>
+          <input value={ci} onChange={e=>setCi(e.target.value)} placeholder="Ej: 5.234.567-8" style={inp}/>
+        </div>
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>Cohorte (opcional)</label>
+          <input value={cohorte} onChange={e=>setCohorte(e.target.value)} placeholder="Ej: 2024" style={inp}/>
+        </div>
       </div>
       <div style={{marginBottom:20}}>
-        <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>CI (opcional)</label>
-        <input value={ci} onChange={e=>setCi(e.target.value)} placeholder="Ej: 5.234.567-8"
-          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}/>
+        <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>Liceo (opcional)</label>
+        <input value={liceo} onChange={e=>setLiceo(e.target.value)} placeholder="Ej: Crandon" style={inp}/>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14}}>Cancelar</button>
-        <button onClick={()=>ok&&onConfirm(nombre.trim(),ci.trim())} disabled={!ok}
+        <button onClick={()=>ok&&onConfirm(nombre.trim(),ci.trim(),liceo.trim(),cohorte.trim())} disabled={!ok}
           style={{flex:2,padding:"9px",background:ok?"#8b5cf6":"#f3f4f6",color:ok?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:ok?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>Agregar estudiante</button>
       </div>
     </div>
@@ -321,19 +336,21 @@ function BulkImportModal({onConfirm,onCancel}) {
       const headers=Object.keys(sampleRow);
       const findCol=(keywords)=>headers.find(h=>keywords.some(k=>norm(h).includes(k)))||null;
 
-      const colNombre=findCol(["nombre completo","nombre","name"]);
-      const colLiceo= findCol(["liceo","institucion","colegio","centro"]);
-      const colCI=    findCol(["cedula","ci","documento","doc"]);
+      const colNombre =findCol(["nombre completo","nombre","name"]);
+      const colLiceo  =findCol(["liceo","institucion","colegio","centro"]);
+      const colCI     =findCol(["cedula","ci","documento","doc"]);
+      const colCohorte=findCol(["cohorte","promocion","año","año de ingreso","generacion"]);
 
       if(!colNombre){setError("No se encontró la columna 'Nombre completo'. Verificá los encabezados.");setLoading(false);return;}
 
       const results=[]; const errs=[];
       rows.forEach((row,i)=>{
-        const nombre=String(row[colNombre]||"").trim();
-        const liceo= colLiceo?String(row[colLiceo]||"").trim():"";
-        const ci=    colCI?String(row[colCI]||"").trim():"";
+        const nombre  =String(row[colNombre]  ||"").trim();
+        const liceo   =colLiceo  ?String(row[colLiceo]  ||"").trim():"";
+        const ci      =colCI     ?String(row[colCI]     ||"").trim():"";
+        const cohorte =colCohorte?String(row[colCohorte]||"").trim():"";
         if(!nombre||nombre.length<2){errs.push(`Fila ${i+2}: nombre vacío o muy corto`);return;}
-        results.push({nombre,liceo,ci});
+        results.push({nombre,liceo,ci,cohorte});
       });
       if(errs.length&&!results.length){setError(errs.join(" · "));setLoading(false);return;}
       if(errs.length) setError(`${errs.length} fila${errs.length>1?"s":""} omitida${errs.length>1?"s":""}: ${errs.slice(0,3).join(" · ")}${errs.length>3?"…":""}`);
@@ -352,9 +369,9 @@ function BulkImportModal({onConfirm,onCancel}) {
         <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>Carga masiva desde Excel</div>
         <div style={{fontSize:13,color:"#6b7280"}}>El archivo debe tener estas columnas (en cualquier orden):</div>
         <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
-          {["Nombre completo","Nombre de Liceo","Cédula"].map(col=><span key={col} style={{fontSize:12,background:"#f5f3ff",color:"#6d28d9",padding:"2px 10px",borderRadius:10,border:"1px solid #ddd6fe",fontWeight:500}}>{col}</span>)}
+          {["Nombre completo","Nombre de Liceo","Cédula","Cohorte"].map(col=><span key={col} style={{fontSize:12,background:"#f5f3ff",color:"#6d28d9",padding:"2px 10px",borderRadius:10,border:"1px solid #ddd6fe",fontWeight:500}}>{col}</span>)}
         </div>
-        <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Liceo y Cédula son opcionales.</div>
+        <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Liceo, Cédula y Cohorte son opcionales.</div>
       </div>
 
       {/* File drop zone */}
@@ -379,11 +396,13 @@ function BulkImportModal({onConfirm,onCancel}) {
                 <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Nombre</th>
                 <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Liceo</th>
                 <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>CI</th>
+                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Cohorte</th>
               </tr></thead>
               <tbody>{preview.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #f3f4f6"}}>
                 <td style={{padding:"5px 10px",color:"#111827"}}>{r.nombre}</td>
                 <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.liceo||"—"}</td>
                 <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.ci||"—"}</td>
+                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.cohorte||"—"}</td>
               </tr>)}</tbody>
             </table>
           </div>
@@ -626,6 +645,7 @@ export default function App() {
 
   const [sidebarOpen,setSidebarOpen] = useState(true);
   const [isMobile,setIsMobile]       = useState(false);
+  const [searchStudents,setSearchStudents] = useState("");
 
   useEffect(()=>{
     const check=()=>{ const m=window.innerWidth<640; setIsMobile(m); if(!m)setSidebarOpen(true); };
@@ -638,9 +658,9 @@ export default function App() {
     setCurrentUser(u); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]); setAssignedOutItems([]);
     setLoaded(true); setView("dashboard");
     const uid=u.id;
-    // Listen to own data
+    // Listen to own data (shared students + per-user visits/items)
     const ownUnsubs=[
-      onSnapshot(uCol(uid,"locations"), s=>setStudents(s.docs.map(d=>d.data())), e=>console.error(e)),
+      onSnapshot(studentsCol(), s=>setStudents(s.docs.map(d=>d.data())), e=>console.error(e)),
       onSnapshot(uCol(uid,"visits"),    s=>setVisits(s.docs.map(d=>d.data())),   e=>console.error(e)),
       onSnapshot(uCol(uid,"items"),     s=>setItems(s.docs.map(d=>d.data())),    e=>console.error(e)),
       onSnapshot(uCfg(uid), s=>{ if(s.exists()){const d=s.data();setCustomLiceos(d.customAreas||[]);setCustomTypes(d.customTypes||[]);} }, e=>console.error(e)),
@@ -680,10 +700,10 @@ export default function App() {
   }
   const sharedTA={allFormLiceos,allTypeOptions,liceoAdding,setLiceoAdding,liceoNewVal,setLiceoNewVal,confirmNewLiceo,typeAdding,setTypeAdding,typeNewVal,setTypeNewVal,confirmNewType};
 
-  function addStudent(nombre,ci){ const s={id:genId(),name:nombre,ci:ci||""}; fbSet(uid,"locations",s.id,s); setShowNewStudentModal(false); }
-  function bulkAddStudents(list){ list.forEach(({nombre,ci,liceo})=>{ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||""}; fbSet(uid,"locations",s.id,s); }); setShowBulkImport(false); }
-  function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditingStudId(null); }
-  function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditCIModal(null); }
+  function addStudent(nombre,ci,liceo,cohorte){ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""}; fbSetStudent(s.id,s); setShowNewStudentModal(false); }
+  function bulkAddStudents(list){ list.forEach(({nombre,ci,liceo,cohorte})=>{ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""}; fbSetStudent(s.id,s); }); setShowBulkImport(false); }
+  function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSetStudent(id,u); setEditingStudId(null); }
+  function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSetStudent(id,u); setEditCIModal(null); }
 
   async function deleteVisit(visitId){
     if(!window.confirm("¿Eliminar esta gestión y todas sus tareas?"))return;
@@ -697,12 +717,20 @@ export default function App() {
     if(view==="editvisit") setView("student");
   }
 
-  async function deleteStudent(studId){
+  async function deleteAllStudents(){
+    if(!window.confirm(`¿Eliminar los ${students.length} alumnos y TODOS sus datos (gestiones y tareas)? Esta acción no se puede deshacer.`))return;
+    const batch=writeBatch(db);
+    students.forEach(s=>batch.delete(studentDoc(s.id)));
+    visits.forEach(v=>batch.delete(doc(db,`users/${uid}/visits/${v.id}`)));
+    items.forEach(i=>batch.delete(doc(db,`users/${uid}/items/${i.id}`)));
+    await batch.commit();
+    setStudents([]); setVisits([]); setItems([]);
+  }
     if(!window.confirm("¿Eliminar este alumno, todas sus gestiones y tareas? Esta acción no se puede deshacer."))return;
     const studVisitIds=visits.filter(v=>v.locationId===studId).map(v=>v.id);
     const studItems=items.filter(i=>i.locationId===studId);
     const batch=writeBatch(db);
-    batch.delete(doc(db,`users/${uid}/locations/${studId}`));
+    batch.delete(studentDoc(studId));
     studVisitIds.forEach(vid=>batch.delete(doc(db,`users/${uid}/visits/${vid}`)));
     studItems.forEach(it=>batch.delete(doc(db,`users/${uid}/items/${it.id}`)));
     await batch.commit();
@@ -941,9 +969,12 @@ export default function App() {
 
         {view==="students"&&(
           <div style={{padding:"28px",maxWidth:740}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22,paddingLeft:isMobile?0:48}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,paddingLeft:isMobile?0:48}}>
               <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>Mis Alumnos</h1>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                {students.length>0&&<button onClick={deleteAllStudents} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",background:"#fef2f2",color:"#b91c1c",border:"1px solid #fca5a5",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+                  <i className="ti ti-trash" style={{fontSize:13}}/> Eliminar todos
+                </button>}
                 <button onClick={()=>setShowBulkImport(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"#f5f3ff",color:"#6d28d9",border:"1px solid #ddd6fe",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
                   <i className="ti ti-table-import" style={{fontSize:14}}/> Importar lista
                 </button>
@@ -952,8 +983,27 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {students.length===0&&<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay alumnos registrados.</div>}
-            {students.map(stud=>{
+
+            {/* Search bar */}
+            <div style={{position:"relative",marginBottom:16}}>
+              <i className="ti ti-search" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,color:"#9ca3af",pointerEvents:"none"}}/>
+              <input value={searchStudents} onChange={e=>setSearchStudents(e.target.value)}
+                placeholder={`Buscar entre ${students.length} alumnos…`}
+                style={{width:"100%",padding:"9px 12px 9px 36px",borderRadius:10,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#111827",fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+              {searchStudents&&<button onClick={()=>setSearchStudents("")}
+                style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:16,lineHeight:1}}>✕</button>}
+            </div>
+
+            {(()=>{
+              const norm=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+              const q=norm(searchStudents.trim());
+              const filtered=q?students.filter(s=>norm(s.name).includes(q)||norm(s.ci||"").includes(q)||norm(s.liceo||"").includes(q)||norm(s.cohorte||"").includes(q)):students;
+              const sorted=[...filtered].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+              if(students.length===0)return <div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay alumnos registrados.</div>;
+              if(sorted.length===0)return <div style={{textAlign:"center",padding:"32px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12}}>Sin resultados para "{searchStudents}"</div>;
+              return <>
+                {q&&<div style={{fontSize:12,color:"#6b7280",marginBottom:10}}>{sorted.length} resultado{sorted.length!==1?"s":""}</div>}
+                {sorted.map(stud=>{
               const sv=visits.filter(v=>v.locationId===stud.id);
               const so=openItems.filter(i=>i.locationId===stud.id).length;
               const sr=resolvedItems.filter(i=>i.locationId===stud.id).length;
@@ -969,6 +1019,7 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>{stud.name}</span>
                       {stud.ci&&<span style={{fontSize:11,color:"#8b5cf6",background:"#f5f3ff",padding:"1px 8px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {stud.ci}</span>}
+                      {stud.cohorte&&<span style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",padding:"1px 8px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>Cohorte {stud.cohorte}</span>}
                       {stud.liceo&&<LiceoChip liceo={stud.liceo} size="sm"/>}
                       <button onClick={e=>{e.stopPropagation();setEditingStudId(stud.id);setEditStudName(stud.name);}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                         <i className="ti ti-pencil" style={{fontSize:11}}/>Renombrar
@@ -993,6 +1044,8 @@ export default function App() {
                 </div>}
               </div>;
             })}
+              </>;
+            })()}
           </div>
         )}
 
@@ -1006,6 +1059,7 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                   <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>{selStud.name}</h1>
                   {selStud.ci&&<span style={{fontSize:12,color:"#8b5cf6",background:"#f5f3ff",padding:"2px 10px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {selStud.ci}</span>}
+                  {selStud.cohorte&&<span style={{fontSize:12,color:"#0369a1",background:"#f0f9ff",padding:"2px 10px",borderRadius:8,border:"1px solid #7dd3fc",fontWeight:500}}>Cohorte {selStud.cohorte}</span>}
                   {selStud.liceo&&<LiceoChip liceo={selStud.liceo}/>}
                   <button onClick={()=>setEditCIModal(selStud)} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                     <i className="ti ti-id-badge" style={{fontSize:11}}/>{selStud.ci?"Editar CI":"+ CI"}
