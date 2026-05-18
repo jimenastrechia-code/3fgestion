@@ -701,7 +701,20 @@ export default function App() {
   const sharedTA={allFormLiceos,allTypeOptions,liceoAdding,setLiceoAdding,liceoNewVal,setLiceoNewVal,confirmNewLiceo,typeAdding,setTypeAdding,typeNewVal,setTypeNewVal,confirmNewType};
 
   function addStudent(nombre,ci,liceo,cohorte){ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""}; fbSetStudent(s.id,s); setShowNewStudentModal(false); }
-  function bulkAddStudents(list){ list.forEach(({nombre,ci,liceo,cohorte})=>{ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""}; fbSetStudent(s.id,s); }); setShowBulkImport(false); }
+  async function bulkAddStudents(list){
+    try {
+      const batch=writeBatch(db);
+      list.forEach(({nombre,ci,liceo,cohorte})=>{
+        const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""};
+        batch.set(studentDoc(s.id),s);
+      });
+      await batch.commit();
+      setShowBulkImport(false);
+    } catch(e){
+      console.error(e);
+      alert("Error al importar: " + (e.message||"verificá las reglas de Firestore y tu conexión."));
+    }
+  }
   function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSetStudent(id,u); setEditingStudId(null); }
   function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSetStudent(id,u); setEditCIModal(null); }
 
