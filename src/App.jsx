@@ -47,9 +47,9 @@ const uCfg  = uid          => doc(db,`users/${uid}/config/main`);
 const fbSet    = async (uid,col,id,data) => { try { await setDoc(uDoc(uid,col,id),data); } catch(e){console.error(e);} };
 const fbSetCfg = async (uid,data)        => { try { await setDoc(uCfg(uid),data); }       catch(e){console.error(e);} };
 
-/* ── Shared students collection (all users) ── */
-const studentsCol = () => collection(db,"students");
-const studentDoc  = id => doc(db,`students/${id}`);
+/* ── Shared students collection — stored under users/shared/locations ── */
+const studentsCol = () => collection(db,"users/shared/locations");
+const studentDoc  = id => doc(db,`users/shared/locations/${id}`);
 const fbSetStudent = async (id,data) => { try { await setDoc(studentDoc(id),data); } catch(e){console.error(e);} };
 const fbDelStudent = async id => { try { await deleteDoc(studentDoc(id)); } catch(e){console.error(e);} };
 
