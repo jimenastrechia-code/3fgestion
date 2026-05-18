@@ -211,7 +211,7 @@ function CommentThread({item,onAddComment,onDeleteComment,onResolve}) {
   </div>;
 }
 
-function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onDeleteComment,onEditItem,showStudent=true}) {
+function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onDeleteComment,onEditItem,onDelete,showStudent=true}) {
   const displayStudent=item.studentName||studentName;
   const [expanded,setExpanded]=useState(false);
   const [editing,setEditing]=useState(false);
@@ -245,6 +245,9 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onDeleteCom
       <p style={{margin:0,fontSize:14,color:"#111827",lineHeight:1.55,flex:1}}>{item.description}</p>
       {item.status==="abierto"&&onEditItem&&<button onClick={()=>{setEditDesc(item.description);setEditing(true);}} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",padding:"2px",flexShrink:0}}>
         <i className="ti ti-pencil" style={{fontSize:13}}/>
+      </button>}
+      {onDelete&&<button onClick={()=>onDelete(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",padding:"2px",flexShrink:0}}>
+        <i className="ti ti-trash" style={{fontSize:13}}/>
       </button>}
     </div>}
     <PhotoStrip photos={item.photos}/>
@@ -731,6 +734,35 @@ export default function App() {
   function addComment(itemId,text){ const it=items.find(i=>i.id===itemId); if(!it)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...it,comments:[...(it.comments||[]),c]}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
   function deleteComment(itemId,commentId){ const it=items.find(i=>i.id===itemId); if(!it)return; const u={...it,comments:(it.comments||[]).filter(c=>c.id!==commentId)}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
   function editItemText(itemId,newDesc){ const it=items.find(i=>i.id===itemId); if(!it)return; const u={...it,description:newDesc}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
+
+  /* ── Handlers for items assigned OUT (write to assignee's collection) ── */
+  function resolveAssignedItem(itemId){
+    const it=assignedOutItems.find(i=>i.id===itemId); if(!it)return;
+    const u={...it,status:"resuelto",resolvedAt:today()};
+    setAssignedOutItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(it.assignedTo,"items",itemId,u);
+  }
+  function addCommentAssigned(itemId,text){
+    const it=assignedOutItems.find(i=>i.id===itemId); if(!it)return;
+    const c={id:genId(),text:text.trim(),date:today()};
+    const u={...it,comments:[...(it.comments||[]),c]};
+    setAssignedOutItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(it.assignedTo,"items",itemId,u);
+  }
+  function deleteCommentAssigned(itemId,commentId){
+    const it=assignedOutItems.find(i=>i.id===itemId); if(!it)return;
+    const u={...it,comments:(it.comments||[]).filter(c=>c.id!==commentId)};
+    setAssignedOutItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(it.assignedTo,"items",itemId,u);
+  }
+  function editAssignedItemText(itemId,newDesc){
+    const it=assignedOutItems.find(i=>i.id===itemId); if(!it)return;
+    const u={...it,description:newDesc};
+    setAssignedOutItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(it.assignedTo,"items",itemId,u);
+  }
+  async function deleteAssignedItem(itemId){
+    const it=assignedOutItems.find(i=>i.id===itemId); if(!it)return;
+    if(!window.confirm("¿Eliminar esta tarea asignada?"))return;
+    setAssignedOutItems(p=>p.filter(i=>i.id!==itemId));
+    try{ await deleteDoc(uDoc(it.assignedTo,"items",itemId)); }catch(e){console.error(e);}
+  }
   function addVisitComment(visitId,text){ const v=visits.find(v=>v.id===visitId); if(!v)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...v,comments:[...(v.comments||[]),c]}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
   function deleteVisitComment(visitId,commentId){ const v=visits.find(v=>v.id===visitId); if(!v)return; const u={...v,comments:(v.comments||[]).filter(c=>c.id!==commentId)}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
   function resolveVisitNotes(visitId){ const v=visits.find(v=>v.id===visitId); if(!v)return; const u={...v,notesResolved:true}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
@@ -812,6 +844,8 @@ export default function App() {
           <SL>Seguimiento</SL>
           <NavBtn icon="ti-clock-exclamation" label="Tareas abiertas" active={view==="pending"&&!showResolved} badge={openItems.length}
             onClick={()=>navAndClose(()=>{setFLiceo("");setFType("");setFStud("");setFPriority("");setShowResolved(false);setView("pending");})} color={currentUser.color}/>
+          <NavBtn icon="ti-user-share" label="Asignadas" active={view==="asignadas"} badge={assignedOutItems.filter(i=>i.status==="abierto").length+(items.filter(i=>i.assignedBy&&i.status==="abierto").length)}
+            onClick={()=>navAndClose(()=>setView("asignadas"))} color="#7e22ce"/>
           <NavBtn icon="ti-alert-triangle" label="Alta prioridad" active={view==="priority"} badge={highPriorityItems.length}
             onClick={()=>navAndClose(()=>setView("priority"))} color="#b91c1c"/>
           <NavBtn icon="ti-bell" label="Alertas vencidas" active={view==="alerts"} badge={overdueItems.length}
@@ -868,32 +902,18 @@ export default function App() {
               {[...openItems].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,4).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText}/>;})}</div>}
             {assignedOutItems.length>0&&<div style={{marginBottom:28}}>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
-                <i className="ti ti-user-share" style={{fontSize:13,color:"#7e22ce"}}/>Tareas asignadas a otros ({assignedOutItems.length})
+                <i className="ti ti-user-share" style={{fontSize:13,color:"#7e22ce"}}/>Tareas asignadas a otros ({assignedOutItems.filter(i=>i.status==="abierto").length} abiertas)
+                <button onClick={()=>setView("asignadas")} style={{marginLeft:"auto",fontSize:11,color:"#7e22ce",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Ver todas ↗</button>
               </div>
-              <div style={{background:"#faf5ff",border:"1px solid #d8b4fe",borderRadius:12,padding:"14px 16px"}}>
-                {USERS.filter(u=>u.id!==uid).map(u=>{
-                  const uItems=assignedOutItems.filter(i=>i.assignedTo===u.id);
-                  if(!uItems.length)return null;
-                  const openN=uItems.filter(i=>i.status==="abierto").length;
-                  const doneN=uItems.filter(i=>i.status==="resuelto").length;
-                  return <div key={u.id} style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid #ede9fe"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{width:24,height:24,borderRadius:"50%",background:u.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{u.avatar}</div>
-                      <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>{u.name}</span>
-                      {openN>0&&<span style={{fontSize:11,background:"#fef3c7",color:"#92400e",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #fcd34d"}}>{openN} pendiente{openN!==1?"s":""}</span>}
-                      {doneN>0&&<span style={{fontSize:11,background:"#f0fdf4",color:"#166534",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #86efac"}}>✓ {doneN} resuelto{doneN!==1?"s":""}</span>}
-                    </div>
-                    {uItems.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #f5f3ff",flexWrap:"wrap"}}>
-                      <TypeBadge type={item.type} size="sm"/>
-                      {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
-                      <span style={{fontSize:13,color:item.status==="resuelto"?"#9ca3af":"#374151",flex:1,minWidth:120,textDecoration:item.status==="resuelto"?"line-through":"none"}}>{item.description}</span>
-                      {item.studentName&&<span style={{fontSize:11,color:"#8b5cf6",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-user" style={{fontSize:11}}/>{item.studentName}</span>}
-                      {item.alertDate&&<span style={{fontSize:11,color:item.alertDate<=today()?"#b91c1c":"#6b7280",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-bell" style={{fontSize:11}}/>{fmtS(item.alertDate)}</span>}
-                      {item.status==="resuelto"?<span style={{fontSize:11,color:"#166534",fontWeight:600,display:"flex",alignItems:"center",gap:3}}><i className="ti ti-check" style={{fontSize:11}}/>Resuelto</span>:<span style={{fontSize:11,color:"#f59e0b",fontWeight:500}}>Pendiente</span>}
-                    </div>)}
-                  </div>;
-                })}
-              </div>
+              {assignedOutItems.filter(i=>i.status==="abierto").slice(0,3).map(item=>{
+                const assigneeName=USERS.find(u=>u.id===item.assignedTo)?.name;
+                return <ItemCard key={item.id} item={{...item,assignedBy:null}}
+                  studentName={item.studentName} visitDate={item.createdAt}
+                  onResolve={resolveAssignedItem} onAddComment={addCommentAssigned}
+                  onDeleteComment={deleteCommentAssigned} onEditItem={editAssignedItemText}
+                  onDelete={deleteAssignedItem}
+                  showStudent={true}/>;
+              })}
             </div>}
             {students.length===0&&<div style={{textAlign:"center",padding:"60px 24px",background:"#f5f3ff",borderRadius:16,border:"1px dashed #c4b5fd"}}>
               <i className="ti ti-users" style={{fontSize:40,display:"block",marginBottom:12,color:"#c4b5fd"}}/>
@@ -1213,6 +1233,75 @@ export default function App() {
             })}
           </div>
         )}
+
+        {/* ASIGNADAS VIEW */}
+        {view==="asignadas"&&(()=>{
+          const assignedToMe=items.filter(i=>i.assignedBy);
+          const assignedByMe=assignedOutItems;
+          const [tab,setTab]=useState("porme");
+          return <div style={{padding:"28px",maxWidth:760}}>
+            <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 20px",color:"#111827"}}>Tareas Asignadas</h1>
+
+            {/* Tabs */}
+            <div style={{display:"flex",gap:0,marginBottom:24,background:"#f3f4f6",borderRadius:10,padding:4,width:"fit-content"}}>
+              <button onClick={()=>setTab("porme")} style={{padding:"7px 18px",borderRadius:7,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab==="porme"?"#fff":"transparent",color:tab==="porme"?"#6d28d9":"#9ca3af",boxShadow:tab==="porme"?"0 1px 3px rgba(0,0,0,.1)":"none"}}>
+                <i className="ti ti-arrow-up-right" style={{fontSize:12,marginRight:5}}/>Por mí ({assignedByMe.length})
+              </button>
+              <button onClick={()=>setTab("ami")} style={{padding:"7px 18px",borderRadius:7,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,background:tab==="ami"?"#fff":"transparent",color:tab==="ami"?"#6d28d9":"#9ca3af",boxShadow:tab==="ami"?"0 1px 3px rgba(0,0,0,.1)":"none"}}>
+                <i className="ti ti-arrow-down-left" style={{fontSize:12,marginRight:5}}/>A mí ({assignedToMe.length})
+              </button>
+            </div>
+
+            {/* Asignadas POR mí */}
+            {tab==="porme"&&(<>
+              {assignedByMe.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>No asignaste tareas a otros todavía.</div>
+              :USERS.filter(u=>u.id!==uid).map(u=>{
+                const uItems=assignedByMe.filter(i=>i.assignedTo===u.id);
+                if(!uItems.length)return null;
+                const openN=uItems.filter(i=>i.status==="abierto").length;
+                return <div key={u.id} style={{marginBottom:24}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:u.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#fff"}}>{u.avatar}</div>
+                    <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>{u.name}</span>
+                    {openN>0&&<span style={{fontSize:11,background:"#fef3c7",color:"#92400e",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #fcd34d"}}>{openN} pendiente{openN!==1?"s":""}</span>}
+                    {uItems.filter(i=>i.status==="resuelto").length>0&&<span style={{fontSize:11,background:"#f0fdf4",color:"#166534",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #86efac"}}>✓ {uItems.filter(i=>i.status==="resuelto").length} resuelto{uItems.filter(i=>i.status==="resuelto").length!==1?"s":""}</span>}
+                  </div>
+                  {uItems.sort((a,b)=>{const po={alta:0,media:1,baja:2};return (po[a.priority]??1)-(po[b.priority]??1);}).map(item=>(
+                    <ItemCard key={item.id} item={{...item,assignedBy:null}}
+                      studentName={item.studentName} visitDate={item.createdAt}
+                      onResolve={resolveAssignedItem} onAddComment={addCommentAssigned}
+                      onDeleteComment={deleteCommentAssigned} onEditItem={editAssignedItemText}
+                      onDelete={deleteAssignedItem}/>
+                  ))}
+                </div>;
+              })}
+            </>)}
+
+            {/* Asignadas A mí */}
+            {tab==="ami"&&(<>
+              {assignedToMe.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Nadie te asignó tareas todavía.</div>
+              :[...new Set(assignedToMe.map(i=>i.assignedBy))].map(assignerName=>{
+                const aItems=assignedToMe.filter(i=>i.assignedBy===assignerName);
+                const assigner=USERS.find(u=>u.name===assignerName);
+                return <div key={assignerName} style={{marginBottom:24}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                    {assigner&&<div style={{width:28,height:28,borderRadius:"50%",background:assigner.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#fff"}}>{assigner.avatar}</div>}
+                    <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>De {assignerName}</span>
+                    <span style={{fontSize:11,color:"#6b7280"}}>{aItems.filter(i=>i.status==="abierto").length} pendiente{aItems.filter(i=>i.status==="abierto").length!==1?"s":""}</span>
+                  </div>
+                  {aItems.sort((a,b)=>{const po={alta:0,media:1,baja:2};return (po[a.priority]??1)-(po[b.priority]??1);}).map(item=>{
+                    const v=visits.find(v=>v.id===item.visitId);
+                    return <ItemCard key={item.id} item={item}
+                      studentName={item.studentName||students.find(s=>s.id===item.locationId)?.name}
+                      visitDate={v?.date||item.createdAt}
+                      onResolve={resolveItem} onAddComment={addComment}
+                      onDeleteComment={deleteComment} onEditItem={editItemText}/>;
+                  })}
+                </div>;
+              })}
+            </>)}
+          </div>;
+        })()}
 
       </main>
     </div>
