@@ -525,7 +525,7 @@ function LoginScreen({onSelect}) {
   </div>;
 }
 
-function VisitCard({visit,items,onStartEdit,onAddVisitComment,onDeleteVisitComment,onResolveVisitNotes,onResolveItem,onAddComment,onDeleteComment,onEditItemText}) {
+function VisitCard({visit,items,onStartEdit,onDeleteVisit,onAddVisitComment,onDeleteVisitComment,onResolveVisitNotes,onResolveItem,onAddComment,onDeleteComment,onEditItemText}) {
   const [showVC,setShowVC]=useState(false);
   const vis=items.filter(i=>i.visitId===visit.id);
   const oc=vis.filter(i=>i.status==="abierto").length;
@@ -552,6 +552,9 @@ function VisitCard({visit,items,onStartEdit,onAddVisitComment,onDeleteVisitComme
         <button onClick={()=>onStartEdit(visit.id)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,padding:"5px 11px",border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",borderRadius:7,cursor:"pointer",fontWeight:500}}>
           <i className="ti ti-pencil" style={{fontSize:12}}/> Editar
         </button>
+        {onDeleteVisit&&<button onClick={()=>onDeleteVisit(visit.id)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,padding:"5px 9px",border:"1px solid #fca5a5",background:"#fef2f2",color:"#b91c1c",borderRadius:7,cursor:"pointer"}}>
+          <i className="ti ti-trash" style={{fontSize:12}}/>
+        </button>}
       </div>
     </div>
     {vis.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #f9fafb",flexWrap:"wrap"}}>
@@ -678,6 +681,33 @@ export default function App() {
   function bulkAddStudents(list){ list.forEach(({nombre,ci,liceo})=>{ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||""}; fbSet(uid,"locations",s.id,s); }); setShowBulkImport(false); }
   function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditingStudId(null); }
   function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditCIModal(null); }
+
+  async function deleteVisit(visitId){
+    if(!window.confirm("¿Eliminar esta gestión y todas sus tareas?"))return;
+    const visitItems=items.filter(i=>i.visitId===visitId);
+    const batch=writeBatch(db);
+    batch.delete(doc(db,`users/${uid}/visits/${visitId}`));
+    visitItems.forEach(it=>batch.delete(doc(db,`users/${uid}/items/${it.id}`)));
+    await batch.commit();
+    setVisits(p=>p.filter(v=>v.id!==visitId));
+    setItems(p=>p.filter(i=>i.visitId!==visitId));
+    if(view==="editvisit") setView("student");
+  }
+
+  async function deleteStudent(studId){
+    if(!window.confirm("¿Eliminar este alumno, todas sus gestiones y tareas? Esta acción no se puede deshacer."))return;
+    const studVisitIds=visits.filter(v=>v.locationId===studId).map(v=>v.id);
+    const studItems=items.filter(i=>i.locationId===studId);
+    const batch=writeBatch(db);
+    batch.delete(doc(db,`users/${uid}/locations/${studId}`));
+    studVisitIds.forEach(vid=>batch.delete(doc(db,`users/${uid}/visits/${vid}`)));
+    studItems.forEach(it=>batch.delete(doc(db,`users/${uid}/items/${it.id}`)));
+    await batch.commit();
+    setStudents(p=>p.filter(s=>s.id!==studId));
+    setVisits(p=>p.filter(v=>v.locationId!==studId));
+    setItems(p=>p.filter(i=>i.locationId!==studId));
+    setView("students");
+  }
 
   async function submitVisit(){
     if(!nvStudId||!nvDate)return;
@@ -935,6 +965,9 @@ export default function App() {
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
                     {so>0&&<span style={{fontSize:12,background:"#fef3c7",color:"#92400e",padding:"3px 10px",borderRadius:10,fontWeight:700,border:"1px solid #fcd34d"}}>{so}</span>}
+                    <button onClick={e=>{e.stopPropagation();deleteStudent(stud.id);}} style={{padding:"5px 8px",background:"#fef2f2",color:"#b91c1c",border:"1px solid #fca5a5",borderRadius:7,cursor:"pointer",display:"flex",alignItems:"center"}}>
+                      <i className="ti ti-trash" style={{fontSize:13}}/>
+                    </button>
                     <i className="ti ti-chevron-right" style={{fontSize:16,color:"#d1d5db"}}/>
                   </div>
                 </div>}
@@ -960,16 +993,21 @@ export default function App() {
                 </div>
                 <div style={{fontSize:13,color:"#9ca3af"}}>{studVisits.length} gestión{studVisits.length!==1?"es":""} · {studOpen.length} tarea{studOpen.length!==1?"s":""} abierta{studOpen.length!==1?"s":""}</div>
               </div>
-              <button onClick={()=>{setNvStudId(selStud.id);setView("newvisit");}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#8b5cf6",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,flexShrink:0}}>
-                <i className="ti ti-plus" style={{fontSize:14}}/> Nueva gestión
-              </button>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                <button onClick={()=>deleteStudent(selStud.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",background:"#fef2f2",color:"#b91c1c",border:"1px solid #fca5a5",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+                  <i className="ti ti-trash" style={{fontSize:13}}/> Eliminar alumno
+                </button>
+                <button onClick={()=>{setNvStudId(selStud.id);setView("newvisit");}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#8b5cf6",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                  <i className="ti ti-plus" style={{fontSize:14}}/> Nueva gestión
+                </button>
+              </div>
             </div>
             {studOpen.length>0&&<div style={{marginBottom:28}}>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Tareas abiertas ({studOpen.length})</div>
               {studOpen.map(item=>{const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText} showStudent={false}/>;})}</div>}
             <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Historial de gestiones</div>
             {studVisits.length===0&&<div style={{textAlign:"center",padding:"32px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay gestiones registradas.</div>}
-            {studVisits.map(visit=><VisitCard key={visit.id} visit={visit} items={items} onStartEdit={startEdit} onAddVisitComment={addVisitComment} onResolveVisitNotes={resolveVisitNotes} onResolveItem={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onDeleteVisitComment={deleteVisitComment} onEditItemText={editItemText}/>)}
+            {studVisits.map(visit=><VisitCard key={visit.id} visit={visit} items={items} onStartEdit={startEdit} onDeleteVisit={deleteVisit} onAddVisitComment={addVisitComment} onResolveVisitNotes={resolveVisitNotes} onResolveItem={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onDeleteVisitComment={deleteVisitComment} onEditItemText={editItemText}/>)}
           </div>
         )}
 
