@@ -151,15 +151,20 @@ function BulletDisplay({bullets}) {
   </ul>;
 }
 
-function VisitCommentThread({visit,onAddComment,onResolve}) {
+function VisitCommentThread({visit,onAddComment,onDeleteComment,onResolve}) {
   const [text,setText]=useState("");
   const comments=visit.comments||[];
   const submit=()=>{if(!text.trim())return;onAddComment(visit.id,text);setText("");};
   return <div style={{borderTop:"1px solid #f3f4f6",paddingTop:10,marginTop:10}}>
     {comments.length>0&&<div style={{marginBottom:10}}>
-      {comments.map(c=><div key={c.id} style={{display:"flex",gap:8,marginBottom:6}}>
-        <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2}}/>
-        <div><span style={{fontSize:11,color:"#9ca3af",marginRight:8}}>{fmt(c.date)}</span><span style={{fontSize:13,color:"#374151"}}>{c.text}</span></div>
+      {comments.map(c=><div key={c.id} style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
+        <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2,marginTop:2}}/>
+        <div style={{flex:1}}>
+          <span style={{fontSize:11,color:"#9ca3af",marginRight:8}}>{fmt(c.date)}</span>
+          <span style={{fontSize:13,color:"#374151"}}>{c.text}</span>
+        </div>
+        {onDeleteComment&&<button onClick={()=>onDeleteComment(visit.id,c.id)} title="Eliminar"
+          style={{background:"none",border:"none",cursor:"pointer",color:"#d1d5db",fontSize:12,padding:"0 2px",flexShrink:0,lineHeight:1}}>✕</button>}
       </div>)}
     </div>}
     <div style={{display:"flex",gap:8,marginBottom:8}}>
@@ -176,15 +181,20 @@ function VisitCommentThread({visit,onAddComment,onResolve}) {
   </div>;
 }
 
-function CommentThread({item,onAddComment,onResolve}) {
+function CommentThread({item,onAddComment,onDeleteComment,onResolve}) {
   const [text,setText]=useState("");
   const comments=item.comments||[];
   const submit=()=>{if(!text.trim())return;onAddComment(item.id,text);setText("");};
   return <div style={{borderTop:"1px solid #f3f4f6",paddingTop:12,marginTop:12}}>
     {comments.length>0&&<div style={{marginBottom:12}}>
-      {comments.map(c=><div key={c.id} style={{display:"flex",gap:10,marginBottom:8}}>
-        <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2}}/>
-        <div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{fmt(c.date)}</div><div style={{fontSize:13,color:"#374151",lineHeight:1.55}}>{c.text}</div></div>
+      {comments.map(c=><div key={c.id} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+        <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2,marginTop:3}}/>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{fmt(c.date)}</div>
+          <div style={{fontSize:13,color:"#374151",lineHeight:1.55}}>{c.text}</div>
+        </div>
+        {onDeleteComment&&<button onClick={()=>onDeleteComment(item.id,c.id)} title="Eliminar"
+          style={{background:"none",border:"none",cursor:"pointer",color:"#d1d5db",fontSize:12,padding:"2px",flexShrink:0}}>✕</button>}
       </div>)}
     </div>}
     <div style={{display:"flex",gap:8}}>
@@ -201,7 +211,7 @@ function CommentThread({item,onAddComment,onResolve}) {
   </div>;
 }
 
-function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,showStudent=true}) {
+function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onDeleteComment,onEditItem,showStudent=true}) {
   const displayStudent=item.studentName||studentName;
   const [expanded,setExpanded]=useState(false);
   const [editing,setEditing]=useState(false);
@@ -249,7 +259,7 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,
         <i className={`ti ${expanded?"ti-chevron-up":"ti-chevron-down"}`} style={{fontSize:12}}/>
       </button>
     </div>
-    {expanded&&<CommentThread item={item} onAddComment={onAddComment} onResolve={onResolve}/>}
+    {expanded&&<CommentThread item={item} onAddComment={onAddComment} onDeleteComment={onDeleteComment} onResolve={onResolve}/>}
   </div>;
 }
 
@@ -286,33 +296,97 @@ function NewStudentModal({onConfirm,onCancel}) {
 }
 
 function BulkImportModal({onConfirm,onCancel}) {
-  const [text,setText]=useState(""); const [preview,setPreview]=useState([]); const [error,setError]=useState("");
-  function parse(raw) {
-    const lines=raw.split("\n").map(l=>l.trim()).filter(Boolean);
-    const results=[]; const errs=[];
-    lines.forEach((line,i)=>{
-      const parts=line.split(/[,;\t]+/).map(p=>p.trim());
-      if(!parts[0])return;
-      if(parts[0].length<2){errs.push(`Línea ${i+1}: nombre muy corto`);return;}
-      results.push({nombre:parts[0],ci:parts[1]||""});
-    });
-    return {results,errs};
+  const [preview,setPreview]=useState([]);
+  const [error,setError]=useState("");
+  const [fileName,setFileName]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  async function handleFile(e) {
+    const file=e.target.files[0]; if(!file)return;
+    setFileName(file.name); setError(""); setPreview([]); setLoading(true);
+    try {
+      const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+      if(!rows.length){setError("El archivo está vacío.");setLoading(false);return;}
+
+      // Normalize headers: find columns by partial/case-insensitive match
+      const norm=s=>String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+      const sampleRow=rows[0];
+      const headers=Object.keys(sampleRow);
+      const findCol=(keywords)=>headers.find(h=>keywords.some(k=>norm(h).includes(k)))||null;
+
+      const colNombre=findCol(["nombre completo","nombre","name"]);
+      const colLiceo= findCol(["liceo","institucion","colegio","centro"]);
+      const colCI=    findCol(["cedula","ci","documento","doc"]);
+
+      if(!colNombre){setError("No se encontró la columna 'Nombre completo'. Verificá los encabezados.");setLoading(false);return;}
+
+      const results=[]; const errs=[];
+      rows.forEach((row,i)=>{
+        const nombre=String(row[colNombre]||"").trim();
+        const liceo= colLiceo?String(row[colLiceo]||"").trim():"";
+        const ci=    colCI?String(row[colCI]||"").trim():"";
+        if(!nombre||nombre.length<2){errs.push(`Fila ${i+2}: nombre vacío o muy corto`);return;}
+        results.push({nombre,liceo,ci});
+      });
+      if(errs.length&&!results.length){setError(errs.join(" · "));setLoading(false);return;}
+      if(errs.length) setError(`${errs.length} fila${errs.length>1?"s":""} omitida${errs.length>1?"s":""}: ${errs.slice(0,3).join(" · ")}${errs.length>3?"…":""}`);
+      setPreview(results);
+    } catch(err) {
+      setError("No se pudo leer el archivo. Asegurate de que sea un .xlsx o .xls válido.");
+      console.error(err);
+    }
+    setLoading(false);
+    e.target.value="";
   }
-  function handleChange(val) {
-    setText(val);
-    if(!val.trim()){setPreview([]);setError("");return;}
-    const {results,errs}=parse(val);
-    setPreview(results); setError(errs.length?errs.join(" · "):"");
-  }
+
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:520,boxShadow:"0 8px 40px rgba(0,0,0,.18)",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
-      <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>Carga masiva de alumnos</div>
-      <div style={{fontSize:13,color:"#6b7280",marginBottom:14}}>Pegá una lista: <code style={{background:"#f3f4f6",padding:"1px 5px",borderRadius:4}}>Nombre, CI</code> (una por línea). CI opcional.</div>
-      <textarea value={text} onChange={e=>handleChange(e.target.value)} rows={8}
-        placeholder={"Juan Pérez, 5.234.567-8\nMaría García\nPedro López, 3.456.789-1"}
-        style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #e5e7eb",fontSize:13,fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",marginBottom:10}}/>
-      {error&&<div style={{fontSize:12,color:"#b91c1c",marginBottom:8,background:"#fef2f2",padding:"6px 10px",borderRadius:6}}>{error}</div>}
-      {preview.length>0&&<div style={{fontSize:12,color:"#166534",marginBottom:12,background:"#f0fdf4",padding:"6px 10px",borderRadius:6}}>{preview.length} alumno{preview.length!==1?"s":""} listos para importar</div>}
+    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:540,boxShadow:"0 8px 40px rgba(0,0,0,.18)",maxHeight:"90vh",display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>Carga masiva desde Excel</div>
+        <div style={{fontSize:13,color:"#6b7280"}}>El archivo debe tener estas columnas (en cualquier orden):</div>
+        <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
+          {["Nombre completo","Nombre de Liceo","Cédula"].map(col=><span key={col} style={{fontSize:12,background:"#f5f3ff",color:"#6d28d9",padding:"2px 10px",borderRadius:10,border:"1px solid #ddd6fe",fontWeight:500}}>{col}</span>)}
+        </div>
+        <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Liceo y Cédula son opcionales.</div>
+      </div>
+
+      {/* File drop zone */}
+      <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"28px 16px",border:"2px dashed #ddd6fe",borderRadius:12,cursor:"pointer",background:"#faf5ff",transition:"border-color .15s"}}>
+        <i className="ti ti-file-spreadsheet" style={{fontSize:32,color:"#8b5cf6"}}/>
+        <div style={{fontSize:14,fontWeight:600,color:"#374151"}}>{fileName||"Hacé click para elegir el archivo"}</div>
+        <div style={{fontSize:12,color:"#9ca3af"}}>.xlsx o .xls</div>
+        <input type="file" accept=".xlsx,.xls" onChange={handleFile} style={{display:"none"}}/>
+      </label>
+
+      {loading&&<div style={{fontSize:13,color:"#8b5cf6",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-loader-2 ti-spin" style={{fontSize:15}}/>Procesando…</div>}
+      {error&&<div style={{fontSize:12,color:"#b91c1c",background:"#fef2f2",padding:"8px 12px",borderRadius:8,border:"1px solid #fca5a5"}}>{error}</div>}
+
+      {preview.length>0&&(
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{fontSize:12,color:"#166534",background:"#f0fdf4",padding:"6px 12px",borderRadius:8,border:"1px solid #86efac",fontWeight:500}}>
+            ✓ {preview.length} alumno{preview.length!==1?"s":""} listos para importar
+          </div>
+          <div style={{overflowY:"auto",maxHeight:180,border:"1px solid #e5e7eb",borderRadius:8}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{background:"#f9fafb",position:"sticky",top:0}}>
+                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Nombre</th>
+                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Liceo</th>
+                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>CI</th>
+              </tr></thead>
+              <tbody>{preview.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #f3f4f6"}}>
+                <td style={{padding:"5px 10px",color:"#111827"}}>{r.nombre}</td>
+                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.liceo||"—"}</td>
+                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.ci||"—"}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div style={{display:"flex",gap:8,marginTop:"auto"}}>
         <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14}}>Cancelar</button>
         <button onClick={()=>preview.length>0&&onConfirm(preview)} disabled={preview.length===0}
@@ -451,7 +525,7 @@ function LoginScreen({onSelect}) {
   </div>;
 }
 
-function VisitCard({visit,items,onStartEdit,onAddVisitComment,onResolveVisitNotes,onResolveItem,onAddComment,onEditItemText}) {
+function VisitCard({visit,items,onStartEdit,onAddVisitComment,onDeleteVisitComment,onResolveVisitNotes,onResolveItem,onAddComment,onDeleteComment,onEditItemText}) {
   const [showVC,setShowVC]=useState(false);
   const vis=items.filter(i=>i.visitId===visit.id);
   const oc=vis.filter(i=>i.status==="abierto").length;
@@ -471,7 +545,7 @@ function VisitCard({visit,items,onStartEdit,onAddVisitComment,onResolveVisitNote
           </button>
           {visit.notesResolved&&<span style={{fontSize:11,color:"#166534",fontWeight:600,display:"flex",alignItems:"center",gap:3}}><i className="ti ti-check" style={{fontSize:11}}/>Notas resueltas</span>}
         </div>
-        {showVC&&<VisitCommentThread visit={visit} onAddComment={onAddVisitComment} onResolve={onResolveVisitNotes}/>}
+        {showVC&&<VisitCommentThread visit={visit} onAddComment={onAddVisitComment} onDeleteComment={onDeleteVisitComment} onResolve={onResolveVisitNotes}/>}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0,marginLeft:12}}>
         {vis.length>0&&<span style={{fontSize:11,fontWeight:600,color:oc>0?"#b45309":"#166534",background:oc>0?"#fffbeb":"#f0fdf4",padding:"2px 8px",borderRadius:8,border:`1px solid ${oc>0?"#fcd34d":"#86efac"}`}}>{oc>0?`${oc} abierta${oc!==1?"s":""}` :"✓ Todo ok"}</span>}
@@ -502,6 +576,7 @@ export default function App() {
   const [items,setItems]               = useState([]);
   const [customLiceos,setCustomLiceos] = useState([]);
   const [customTypes,setCustomTypes]   = useState([]);
+  const [assignedOutItems,setAssignedOutItems] = useState([]); // tasks I assigned to others
 
   const [view,setView]               = useState("dashboard");
   const [selStudId,setSelStudId]     = useState(null);
@@ -554,19 +629,31 @@ export default function App() {
 
   function selectUser(u) {
     unsubRef.current.forEach(fn=>fn());
-    setCurrentUser(u); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]);
+    setCurrentUser(u); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]); setAssignedOutItems([]);
     setLoaded(true); setView("dashboard");
     const uid=u.id;
-    unsubRef.current=[
+    // Listen to own data
+    const ownUnsubs=[
       onSnapshot(uCol(uid,"locations"), s=>setStudents(s.docs.map(d=>d.data())), e=>console.error(e)),
       onSnapshot(uCol(uid,"visits"),    s=>setVisits(s.docs.map(d=>d.data())),   e=>console.error(e)),
       onSnapshot(uCol(uid,"items"),     s=>setItems(s.docs.map(d=>d.data())),    e=>console.error(e)),
       onSnapshot(uCfg(uid), s=>{ if(s.exists()){const d=s.data();setCustomLiceos(d.customAreas||[]);setCustomTypes(d.customTypes||[]);} }, e=>console.error(e)),
     ];
+    // Listen to items assigned to others by me (read from other users' collections)
+    const otherUsers=USERS.filter(x=>x.id!==uid);
+    const outMap={};
+    const outUnsubs=otherUsers.map(ou=>{
+      return onSnapshot(uCol(ou.id,"items"), s=>{
+        const mine=s.docs.map(d=>d.data()).filter(it=>it.assignedByUid===uid||it.assignedBy===u.name);
+        outMap[ou.id]=mine;
+        setAssignedOutItems(Object.values(outMap).flat());
+      }, e=>console.error(e));
+    });
+    unsubRef.current=[...ownUnsubs,...outUnsubs];
   }
   function logout() {
     unsubRef.current.forEach(fn=>fn()); unsubRef.current=[];
-    setCurrentUser(null); setLoaded(false); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]);
+    setCurrentUser(null); setLoaded(false); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]); setAssignedOutItems([]);
   }
   function navAndClose(fn) { fn(); if(isMobile) setSidebarOpen(false); }
 
@@ -588,7 +675,7 @@ export default function App() {
   const sharedTA={allFormLiceos,allTypeOptions,liceoAdding,setLiceoAdding,liceoNewVal,setLiceoNewVal,confirmNewLiceo,typeAdding,setTypeAdding,typeNewVal,setTypeNewVal,confirmNewType};
 
   function addStudent(nombre,ci){ const s={id:genId(),name:nombre,ci:ci||""}; fbSet(uid,"locations",s.id,s); setShowNewStudentModal(false); }
-  function bulkAddStudents(list){ list.forEach(({nombre,ci})=>{ const s={id:genId(),name:nombre,ci:ci||""}; fbSet(uid,"locations",s.id,s); }); setShowBulkImport(false); }
+  function bulkAddStudents(list){ list.forEach(({nombre,ci,liceo})=>{ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||""}; fbSet(uid,"locations",s.id,s); }); setShowBulkImport(false); }
   function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditingStudId(null); }
   function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditCIModal(null); }
 
@@ -600,7 +687,8 @@ export default function App() {
     const newItems=nvItems.map(it=>{
       const targetUid=it.assignedTo||uid;
       const assignedBy=targetUid!==uid?currentUser.name:null;
-      return {...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[],priority:it.priority||"media",alertDate:it.alertDate||null,assignedTo:targetUid,assignedBy,studentName:selStudName};
+      const assignedByUid=targetUid!==uid?uid:null;
+      return {...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[],priority:it.priority||"media",alertDate:it.alertDate||null,assignedTo:targetUid,assignedBy,assignedByUid,studentName:selStudName};
     });
     const batch=writeBatch(db);
     batch.set(doc(db,`users/${uid}/visits/${visitId}`),visit);
@@ -611,8 +699,10 @@ export default function App() {
   }
   function resolveItem(id){ const it=items.find(i=>i.id===id); if(!it)return; const u={...it,status:"resuelto",resolvedAt:today()}; setItems(p=>p.map(i=>i.id===id?u:i)); fbSet(uid,"items",id,u); }
   function addComment(itemId,text){ const it=items.find(i=>i.id===itemId); if(!it)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...it,comments:[...(it.comments||[]),c]}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
+  function deleteComment(itemId,commentId){ const it=items.find(i=>i.id===itemId); if(!it)return; const u={...it,comments:(it.comments||[]).filter(c=>c.id!==commentId)}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
   function editItemText(itemId,newDesc){ const it=items.find(i=>i.id===itemId); if(!it)return; const u={...it,description:newDesc}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
   function addVisitComment(visitId,text){ const v=visits.find(v=>v.id===visitId); if(!v)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...v,comments:[...(v.comments||[]),c]}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
+  function deleteVisitComment(visitId,commentId){ const v=visits.find(v=>v.id===visitId); if(!v)return; const u={...v,comments:(v.comments||[]).filter(c=>c.id!==commentId)}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
   function resolveVisitNotes(visitId){ const v=visits.find(v=>v.id===visitId); if(!v)return; const u={...v,notesResolved:true}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
 
   function startEdit(visitId){
@@ -730,7 +820,7 @@ export default function App() {
               <div style={{fontSize:12,fontWeight:700,color:"#c2410c",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
                 <i className="ti ti-bell" style={{fontSize:14}}/>Alertas vencidas hoy ({overdueItems.length})
               </div>
-              {overdueItems.slice(0,3).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>}
+              {overdueItems.slice(0,3).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText}/>;})}</div>}
             {allLiceos.length>0&&<div style={{marginBottom:28}}>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Tareas abiertas por liceo</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:8}}>
@@ -745,7 +835,36 @@ export default function App() {
             </div>}
             {openItems.length>0&&<div>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Últimas tareas abiertas</div>
-              {[...openItems].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,4).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>}
+              {[...openItems].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,4).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText}/>;})}</div>}
+            {assignedOutItems.length>0&&<div style={{marginBottom:28}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+                <i className="ti ti-user-share" style={{fontSize:13,color:"#7e22ce"}}/>Tareas asignadas a otros ({assignedOutItems.length})
+              </div>
+              <div style={{background:"#faf5ff",border:"1px solid #d8b4fe",borderRadius:12,padding:"14px 16px"}}>
+                {USERS.filter(u=>u.id!==uid).map(u=>{
+                  const uItems=assignedOutItems.filter(i=>i.assignedTo===u.id);
+                  if(!uItems.length)return null;
+                  const openN=uItems.filter(i=>i.status==="abierto").length;
+                  const doneN=uItems.filter(i=>i.status==="resuelto").length;
+                  return <div key={u.id} style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid #ede9fe"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <div style={{width:24,height:24,borderRadius:"50%",background:u.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff"}}>{u.avatar}</div>
+                      <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>{u.name}</span>
+                      {openN>0&&<span style={{fontSize:11,background:"#fef3c7",color:"#92400e",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #fcd34d"}}>{openN} pendiente{openN!==1?"s":""}</span>}
+                      {doneN>0&&<span style={{fontSize:11,background:"#f0fdf4",color:"#166534",padding:"1px 8px",borderRadius:10,fontWeight:700,border:"1px solid #86efac"}}>✓ {doneN} resuelto{doneN!==1?"s":""}</span>}
+                    </div>
+                    {uItems.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #f5f3ff",flexWrap:"wrap"}}>
+                      <TypeBadge type={item.type} size="sm"/>
+                      {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
+                      <span style={{fontSize:13,color:item.status==="resuelto"?"#9ca3af":"#374151",flex:1,minWidth:120,textDecoration:item.status==="resuelto"?"line-through":"none"}}>{item.description}</span>
+                      {item.studentName&&<span style={{fontSize:11,color:"#8b5cf6",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-user" style={{fontSize:11}}/>{item.studentName}</span>}
+                      {item.alertDate&&<span style={{fontSize:11,color:item.alertDate<=today()?"#b91c1c":"#6b7280",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-bell" style={{fontSize:11}}/>{fmtS(item.alertDate)}</span>}
+                      {item.status==="resuelto"?<span style={{fontSize:11,color:"#166534",fontWeight:600,display:"flex",alignItems:"center",gap:3}}><i className="ti ti-check" style={{fontSize:11}}/>Resuelto</span>:<span style={{fontSize:11,color:"#f59e0b",fontWeight:500}}>Pendiente</span>}
+                    </div>)}
+                  </div>;
+                })}
+              </div>
+            </div>}
             {students.length===0&&<div style={{textAlign:"center",padding:"60px 24px",background:"#f5f3ff",borderRadius:16,border:"1px dashed #c4b5fd"}}>
               <i className="ti ti-users" style={{fontSize:40,display:"block",marginBottom:12,color:"#c4b5fd"}}/>
               <p style={{margin:"0 0 16px",fontSize:15,color:"#6b7280"}}>Agregá tu primer alumno para comenzar</p>
@@ -759,7 +878,7 @@ export default function App() {
             <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 6px",color:"#111827"}}>Alta Prioridad</h1>
             <div style={{fontSize:13,color:"#6b7280",marginBottom:22}}>{highPriorityItems.length} tarea{highPriorityItems.length!==1?"s":""} de alta prioridad</div>
             {highPriorityItems.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>¡Sin tareas de alta prioridad! ✓</div>
-            :highPriorityItems.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>
+            :highPriorityItems.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText}/>;})}</div>
         )}
 
         {view==="alerts"&&(
@@ -767,7 +886,7 @@ export default function App() {
             <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 6px",color:"#111827"}}>Alertas Vencidas</h1>
             <div style={{fontSize:13,color:"#6b7280",marginBottom:22}}>{overdueItems.length} alerta{overdueItems.length!==1?"s":""} vencida{overdueItems.length!==1?"s":""}</div>
             {overdueItems.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>¡Sin alertas vencidas! ✓</div>
-            :overdueItems.sort((a,b)=>(a.alertDate||"").localeCompare(b.alertDate||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>
+            :overdueItems.sort((a,b)=>(a.alertDate||"").localeCompare(b.alertDate||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText}/>;})}</div>
         )}
 
         {view==="students"&&(
@@ -800,6 +919,7 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>{stud.name}</span>
                       {stud.ci&&<span style={{fontSize:11,color:"#8b5cf6",background:"#f5f3ff",padding:"1px 8px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {stud.ci}</span>}
+                      {stud.liceo&&<LiceoChip liceo={stud.liceo} size="sm"/>}
                       <button onClick={e=>{e.stopPropagation();setEditingStudId(stud.id);setEditStudName(stud.name);}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                         <i className="ti ti-pencil" style={{fontSize:11}}/>Renombrar
                       </button>
@@ -833,6 +953,7 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                   <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>{selStud.name}</h1>
                   {selStud.ci&&<span style={{fontSize:12,color:"#8b5cf6",background:"#f5f3ff",padding:"2px 10px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {selStud.ci}</span>}
+                  {selStud.liceo&&<LiceoChip liceo={selStud.liceo}/>}
                   <button onClick={()=>setEditCIModal(selStud)} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                     <i className="ti ti-id-badge" style={{fontSize:11}}/>{selStud.ci?"Editar CI":"+ CI"}
                   </button>
@@ -845,10 +966,10 @@ export default function App() {
             </div>
             {studOpen.length>0&&<div style={{marginBottom:28}}>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Tareas abiertas ({studOpen.length})</div>
-              {studOpen.map(item=>{const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText} showStudent={false}/>;})}</div>}
+              {studOpen.map(item=>{const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={editItemText} showStudent={false}/>;})}</div>}
             <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Historial de gestiones</div>
             {studVisits.length===0&&<div style={{textAlign:"center",padding:"32px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay gestiones registradas.</div>}
-            {studVisits.map(visit=><VisitCard key={visit.id} visit={visit} items={items} onStartEdit={startEdit} onAddVisitComment={addVisitComment} onResolveVisitNotes={resolveVisitNotes} onResolveItem={resolveItem} onAddComment={addComment} onEditItemText={editItemText}/>)}
+            {studVisits.map(visit=><VisitCard key={visit.id} visit={visit} items={items} onStartEdit={startEdit} onAddVisitComment={addVisitComment} onResolveVisitNotes={resolveVisitNotes} onResolveItem={resolveItem} onAddComment={addComment} onDeleteComment={deleteComment} onDeleteVisitComment={deleteVisitComment} onEditItemText={editItemText}/>)}
           </div>
         )}
 
@@ -1050,7 +1171,7 @@ export default function App() {
             :(showResolved?resolvedFiltered:pendFiltered).map(item=>{
               const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);
               return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date}
-                onResolve={!showResolved?resolveItem:undefined} onAddComment={addComment} onEditItem={!showResolved?editItemText:undefined}/>;
+                onResolve={!showResolved?resolveItem:undefined} onAddComment={addComment} onDeleteComment={deleteComment} onEditItem={!showResolved?editItemText:undefined}/>;
             })}
           </div>
         )}
