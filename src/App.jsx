@@ -726,6 +726,7 @@ export default function App() {
     await batch.commit();
     setStudents([]); setVisits([]); setItems([]);
   }
+  async function deleteStudent(studId){
     if(!window.confirm("¿Eliminar este alumno, todas sus gestiones y tareas? Esta acción no se puede deshacer."))return;
     const studVisitIds=visits.filter(v=>v.locationId===studId).map(v=>v.id);
     const studItems=items.filter(i=>i.locationId===studId);
