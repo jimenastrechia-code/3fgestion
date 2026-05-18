@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore";
+import * as XLSX from "xlsx";
 
 const USERS = [
   { id:"sofi",  name:"Sofi",  avatar:"S", color:"#8b5cf6" },
@@ -323,7 +324,6 @@ function BulkImportModal({onConfirm,onCancel}) {
     const file=e.target.files[0]; if(!file)return;
     setFileName(file.name); setError(""); setPreview([]); setLoading(true);
     try {
-      const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
       const buf=await file.arrayBuffer();
       const wb=XLSX.read(buf,{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]];
