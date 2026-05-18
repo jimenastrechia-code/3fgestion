@@ -202,6 +202,7 @@ function CommentThread({item,onAddComment,onResolve}) {
 }
 
 function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,showStudent=true}) {
+  const displayStudent=item.studentName||studentName;
   const [expanded,setExpanded]=useState(false);
   const [editing,setEditing]=useState(false);
   const [editDesc,setEditDesc]=useState(item.description);
@@ -217,6 +218,7 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,
         {item.alertDate&&item.status==="abierto"&&<span style={{fontSize:11,color:isOverdue?"#b91c1c":"#6b7280",background:isOverdue?"#fef2f2":"#f9fafb",padding:"1px 8px",borderRadius:8,border:`1px solid ${isOverdue?"#fca5a5":"#e5e7eb"}`,display:"flex",alignItems:"center",gap:3}}>
           <i className="ti ti-bell" style={{fontSize:11}}/>{isOverdue?"Vencida":fmt(item.alertDate)}
         </span>}
+        {item.assignedBy&&<Badge label={`Asignado por ${item.assignedBy}`} palette={PALETTE.purple} icon="ti-user-share" size="sm"/>}
         {item.status==="resuelto"&&<Badge label="Resuelto" palette={PALETTE.green} icon="ti-check" size="sm"/>}
       </div>
       <span style={{fontSize:11,color:"#9ca3af",whiteSpace:"nowrap",flexShrink:0}}>{fmtS(visitDate)}</span>
@@ -238,7 +240,7 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,
     <PhotoStrip photos={item.photos}/>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
       <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-        {showStudent&&studentName&&<span style={{fontSize:12,color:"#6b7280",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-user" style={{fontSize:12}}/>{studentName}</span>}
+        {showStudent&&displayStudent&&<span style={{fontSize:12,color:"#6b7280",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-user" style={{fontSize:12}}/>{displayStudent}</span>}
         <span style={{fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-calendar" style={{fontSize:12}}/>{fmt(visitDate)}</span>
       </div>
       <button onClick={()=>setExpanded(e=>!e)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,background:"none",border:"none",cursor:"pointer",color:"#8b5cf6",padding:0,fontWeight:500}}>
@@ -370,18 +372,35 @@ function InlineTA({type,setType,liceo,setLiceo,allFormLiceos,allTypeOptions,lice
   </div>;
 }
 
-function InlineAddItem({allFormLiceos,allTypeOptions,onAdd,onCancel,showCancel=false,...shared}) {
+function InlineAddItem({allFormLiceos,allTypeOptions,onAdd,onCancel,showCancel=false,currentUserId,...shared}) {
   const [type,setType]=useState("contacto"); const [liceo,setLiceo]=useState(""); const [desc,setDesc]=useState("");
   const [photos,setPhotos]=useState([]); const [priority,setPriority]=useState("media"); const [alertDate,setAlertDate]=useState(""); const [showExtra,setShowExtra]=useState(false);
+  const [assignedTo,setAssignedTo]=useState(currentUserId||"");
   const inp={padding:"7px 11px",borderRadius:8,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#111827",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"};
   const handleAdd=()=>{
     if(!desc.trim())return;
-    onAdd({type,liceo,description:desc,photos,priority,alertDate:alertDate||null});
-    setType("contacto");setLiceo("");setDesc("");setPhotos([]);setPriority("media");setAlertDate("");setShowExtra(false);
+    onAdd({type,liceo,description:desc,photos,priority,alertDate:alertDate||null,assignedTo:assignedTo||currentUserId});
+    setType("contacto");setLiceo("");setDesc("");setPhotos([]);setPriority("media");setAlertDate("");setShowExtra(false);setAssignedTo(currentUserId||"");
   };
   return <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
     <InlineTA type={type} setType={setType} liceo={liceo} setLiceo={setLiceo} allFormLiceos={allFormLiceos} allTypeOptions={allTypeOptions} {...shared}/>
     <div style={{marginBottom:10}}><input value={desc} onChange={e=>setDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="Descripción de la tarea…" style={inp}/></div>
+
+    {/* Asignar a */}
+    <div style={{marginBottom:10}}>
+      <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Asignar a</label>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {USERS.map(u=>{
+          const active=assignedTo===u.id;
+          return <button key={u.id} onClick={()=>setAssignedTo(u.id)}
+            style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:20,border:`1.5px solid ${active?u.color:"#e5e7eb"}`,background:active?u.color+"18":"transparent",color:active?u.color:"#6b7280",cursor:"pointer",fontSize:12,fontWeight:active?700:400}}>
+            <span style={{width:16,height:16,borderRadius:"50%",background:u.color,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>{u.avatar}</span>
+            {u.name}{u.id===currentUserId?" (yo)":""}
+          </button>;
+        })}
+      </div>
+    </div>
+
     <button onClick={()=>setShowExtra(e=>!e)} style={{fontSize:12,color:"#6b7280",background:"none",border:"none",cursor:"pointer",padding:"0 0 8px",display:"flex",alignItems:"center",gap:4}}>
       <i className={`ti ${showExtra?"ti-chevron-up":"ti-chevron-down"}`} style={{fontSize:11}}/>{showExtra?"Ocultar opciones":"＋ Prioridad y alerta"}
     </button>
@@ -577,10 +596,15 @@ export default function App() {
     if(!nvStudId||!nvDate)return;
     const visitId=genId();
     const visit={id:visitId,locationId:nvStudId,date:nvDate,bullets:nvBullets,photos:nvPhotos,comments:[],notesResolved:false};
-    const newItems=nvItems.map(it=>({...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[],priority:it.priority||"media",alertDate:it.alertDate||null}));
+    const selStudName=students.find(s=>s.id===nvStudId)?.name||"";
+    const newItems=nvItems.map(it=>{
+      const targetUid=it.assignedTo||uid;
+      const assignedBy=targetUid!==uid?currentUser.name:null;
+      return {...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[],priority:it.priority||"media",alertDate:it.alertDate||null,assignedTo:targetUid,assignedBy,studentName:selStudName};
+    });
     const batch=writeBatch(db);
     batch.set(doc(db,`users/${uid}/visits/${visitId}`),visit);
-    newItems.forEach(it=>batch.set(doc(db,`users/${uid}/items/${it.id}`),it));
+    newItems.forEach(it=>batch.set(doc(db,`users/${it.assignedTo}/items/${it.id}`),it));
     await batch.commit();
     setNvItems([]); setNvBullets([""]); setNvDate(today()); setNvPhotos([]);
     setSelStudId(nvStudId); setView("student");
@@ -602,18 +626,18 @@ export default function App() {
   function startEditItem(it){setEditItemId(it.id);setEiType(it.type);setEiLiceo(it.liceo||"");setEiDesc(it.description);setEiPhotos(it.photos||[]);setEiPriority(it.priority||"media");setEiAlertDate(it.alertDate||"");}
   function saveEditItem(id){setEditItems(p=>p.map(it=>it.id===id?{...it,type:eiType,liceo:eiLiceo,description:eiDesc,photos:eiPhotos,priority:eiPriority,alertDate:eiAlertDate||null}:it));setEditItemId(null);}
   function deleteEditItem(id){setEditDelIds(p=>new Set([...p,id]));if(editItemId===id)setEditItemId(null);}
-  function addEditItem(item){setEditItems(p=>[...p,{...item,id:genId(),visitId:editVid,locationId:visits.find(v=>v.id===editVid)?.locationId,createdAt:editDate,status:"abierto",comments:[],priority:item.priority||"media",alertDate:item.alertDate||null}]);setShowAddInEdit(false);}
+  function addEditItem(item){setEditItems(p=>[...p,{...item,id:genId(),visitId:editVid,locationId:visits.find(v=>v.id===editVid)?.locationId,createdAt:editDate,status:"abierto",comments:[],priority:item.priority||"media",alertDate:item.alertDate||null,assignedTo:item.assignedTo||uid,assignedBy:item.assignedTo&&item.assignedTo!==uid?currentUser.name:null}]);setShowAddInEdit(false);}
   async function saveEdit(){
     const orig=visits.find(v=>v.id===editVid);
     const updV={...orig,date:editDate,bullets:editBullets,photos:editPhotos};
     const kept=editItems.filter(i=>!editDelIds.has(i.id));
     const batch=writeBatch(db);
     batch.set(doc(db,`users/${uid}/visits/${editVid}`),updV);
-    kept.forEach(it=>batch.set(doc(db,`users/${uid}/items/${it.id}`),it));
+    kept.forEach(it=>batch.set(doc(db,`users/${it.assignedTo||uid}/items/${it.id}`),it));
     editDelIds.forEach(id=>batch.delete(doc(db,`users/${uid}/items/${id}`)));
     await batch.commit();
     setVisits(p=>p.map(v=>v.id===editVid?updV:v));
-    setItems(p=>[...p.filter(i=>i.visitId!==editVid),...kept]);
+    setItems(p=>[...p.filter(i=>i.visitId!==editVid),...kept.filter(i=>!i.assignedTo||i.assignedTo===uid)]);
     setView("student");
   }
 
@@ -869,7 +893,7 @@ export default function App() {
               );})}
             </div>}
             <div style={{fontSize:14,fontWeight:700,color:"#374151",marginBottom:10}}>Agregar tareas</div>
-            <InlineAddItem {...sharedTA} onAdd={item=>setNvItems(p=>[...p,item])}/>
+            <InlineAddItem {...sharedTA} currentUserId={uid} onAdd={item=>setNvItems(p=>[...p,item])}/>
             {nvItems.length>0&&<div style={{marginTop:10,marginBottom:16}}>
               {nvItems.map((item,idx)=><div key={item.id||idx} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 14px",marginBottom:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -960,7 +984,7 @@ export default function App() {
                 </div>}
               </div>
             ))}
-            {showAddInEdit?<div style={{marginTop:8}}><InlineAddItem {...sharedTA} onAdd={addEditItem} onCancel={()=>setShowAddInEdit(false)} showCancel/></div>
+            {showAddInEdit?<div style={{marginTop:8}}><InlineAddItem {...sharedTA} currentUserId={uid} onAdd={addEditItem} onCancel={()=>setShowAddInEdit(false)} showCancel/></div>
             :<button onClick={()=>setShowAddInEdit(true)} style={{width:"100%",padding:"10px",marginTop:8,border:"1.5px dashed #ddd6fe",background:"#f5f3ff",color:"#6d28d9",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
               <i className="ti ti-plus" style={{fontSize:14}}/> Agregar tarea
             </button>}
