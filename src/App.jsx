@@ -23,23 +23,15 @@ const PALETTE = {
 };
 const LICEO_PAL = ["indigo","amber","green","red","sky","purple","rose","teal","orange","gray"];
 const TYPE_PAL  = { contacto:"sky", derivacion:"purple", rastreo:"amber" };
-
-const LICEOS_DEFAULT = [
-  "Aleph","Areteia","Aletheia","San Felipe","Crandon",
-  "Elbio Fernandez","Santa Elena","Alternativo","Ánima",
-  "IEP","London","Gabriela Mistral","Eduschool",
-];
-
-const ITEM_TYPES = {
-  contacto:   "Contacto al alumno",
-  derivacion: "Derivación",
-  rastreo:    "Rastreo de información",
+const PRIORITY_META = {
+  alta:  { label:"Alta",  bg:"#fef2f2", fg:"#b91c1c", border:"#fca5a5", icon:"ti-alert-triangle" },
+  media: { label:"Media", bg:"#fffbeb", fg:"#b45309", border:"#fcd34d", icon:"ti-minus" },
+  baja:  { label:"Baja",  bg:"#f0f9ff", fg:"#0369a1", border:"#7dd3fc", icon:"ti-arrow-down" },
 };
-const TYPE_ICON = {
-  contacto:   "ti-phone",
-  derivacion: "ti-corner-up-right",
-  rastreo:    "ti-search",
-};
+
+const LICEOS_DEFAULT = ["Aleph","Areteia","Aletheia","San Felipe","Crandon","Elbio Fernandez","Santa Elena","Alternativo","Ánima","IEP","London","Gabriela Mistral","Eduschool"];
+const ITEM_TYPES = { contacto:"Contacto al alumno", derivacion:"Derivación", rastreo:"Rastreo de información" };
+const TYPE_ICON  = { contacto:"ti-phone", derivacion:"ti-corner-up-right", rastreo:"ti-search" };
 
 const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -48,14 +40,12 @@ const fmtS  = d => d ? new Date(d+"T12:00:00").toLocaleDateString("es-UY",{day:"
 const liceoPal = liceo => { const i=[...(liceo||"")].reduce((a,c)=>a+c.charCodeAt(0),0); return PALETTE[LICEO_PAL[i%LICEO_PAL.length]]; };
 const typePal  = type  => PALETTE[TYPE_PAL[type]||"gray"];
 
-/* Firebase */
 const uCol  = (uid,col)    => collection(db,`users/${uid}/${col}`);
 const uDoc  = (uid,col,id) => doc(db,`users/${uid}/${col}/${id}`);
 const uCfg  = uid          => doc(db,`users/${uid}/config/main`);
 const fbSet    = async (uid,col,id,data) => { try { await setDoc(uDoc(uid,col,id),data); } catch(e){console.error(e);} };
 const fbSetCfg = async (uid,data)        => { try { await setDoc(uCfg(uid),data); }       catch(e){console.error(e);} };
 
-/* Image compress */
 async function compressImage(file) {
   return new Promise(resolve => {
     const r = new FileReader();
@@ -74,45 +64,34 @@ async function compressImage(file) {
   });
 }
 
-/* ── Atoms ── */
 function Badge({label,palette,icon,size="md"}) {
   const p=palette||PALETTE.gray, pad=size==="sm"?"1px 7px":"3px 10px";
   return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:p.bg,color:p.fg,border:`1px solid ${p.border}`,fontSize:11,fontWeight:600,padding:pad,borderRadius:20,whiteSpace:"nowrap"}}>
     {icon&&<i className={`ti ${icon}`} style={{fontSize:11}}/>}{label}
   </span>;
 }
-const TypeBadge  = ({type,size="md"}) => <Badge label={ITEM_TYPES[type]||type} palette={typePal(type)} icon={TYPE_ICON[type]||"ti-tag"} size={size}/>;
-const LiceoChip  = ({liceo,size="md"}) => <Badge label={liceo} palette={liceoPal(liceo)} size={size}/>;
+const TypeBadge     = ({type,size="md"})     => <Badge label={ITEM_TYPES[type]||type} palette={typePal(type)} icon={TYPE_ICON[type]||"ti-tag"} size={size}/>;
+const LiceoChip     = ({liceo,size="md"})    => <Badge label={liceo} palette={liceoPal(liceo)} size={size}/>;
+const PriorityBadge = ({priority,size="md"}) => { const m=PRIORITY_META[priority]||PRIORITY_META.media; return <Badge label={m.label} palette={{bg:m.bg,fg:m.fg,border:m.border}} icon={m.icon} size={size}/>; };
 
 function StatCard({label,value,icon,palette,onClick}) {
   const p=palette||PALETTE.gray;
   return <div onClick={onClick} style={{background:p.bg,border:`1px solid ${p.border}`,borderRadius:12,padding:"16px 18px",cursor:onClick?"pointer":"default"}}>
-    <div style={{fontSize:12,color:p.fg,fontWeight:500,marginBottom:8,display:"flex",alignItems:"center",gap:5}}>
-      <i className={`ti ${icon}`} style={{fontSize:14}}/>{label}
-    </div>
+    <div style={{fontSize:12,color:p.fg,fontWeight:500,marginBottom:8,display:"flex",alignItems:"center",gap:5}}><i className={`ti ${icon}`} style={{fontSize:14}}/>{label}</div>
     <div style={{fontSize:28,fontWeight:700,color:p.fg}}>{value}</div>
   </div>;
 }
 
 function Lightbox({src,onClose}) {
-  useEffect(()=>{
-    const esc=e=>{if(e.key==="Escape")onClose();};
-    document.addEventListener("keydown",esc);
-    return ()=>document.removeEventListener("keydown",esc);
-  },[onClose]);
-  return <div onClick={onClose}
-    style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <button onClick={onClose}
-      style={{position:"absolute",top:16,right:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.15)",border:"none",cursor:"pointer",color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-    <img src={src} alt="" onClick={e=>e.stopPropagation()}
-      style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.6)",objectFit:"contain"}}/>
+  useEffect(()=>{ const esc=e=>{if(e.key==="Escape")onClose();}; document.addEventListener("keydown",esc); return ()=>document.removeEventListener("keydown",esc); },[onClose]);
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <button onClick={onClose} style={{position:"absolute",top:16,right:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.15)",border:"none",cursor:"pointer",color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+    <img src={src} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:10,objectFit:"contain"}}/>
   </div>;
 }
 
 function PhotoPicker({photos=[],onChange,compact=false}) {
-  const ref=useRef();
-  const [lightbox,setLightbox]=useState(null);
-  const sz=compact?52:68;
+  const ref=useRef(); const [lb,setLb]=useState(null); const sz=compact?52:68;
   async function handleFiles(e) {
     const files=Array.from(e.target.files); if(!files.length)return;
     const compressed=await Promise.all(files.map(compressImage));
@@ -120,30 +99,26 @@ function PhotoPicker({photos=[],onChange,compact=false}) {
     e.target.value="";
   }
   return <>
-    {lightbox&&<Lightbox src={lightbox} onClose={()=>setLightbox(null)}/>}
+    {lb&&<Lightbox src={lb} onClose={()=>setLb(null)}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       {photos.map(p=><div key={p.id} style={{position:"relative",width:sz,height:sz,flexShrink:0}}>
-        <img src={p.dataUrl} alt={p.name} onClick={()=>setLightbox(p.dataUrl)}
-          style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid #e5e7eb"}}/>
-        <button onClick={()=>onChange(photos.filter(x=>x.id!==p.id))}
-          style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#111",color:"#fff",border:"none",cursor:"pointer",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        <img src={p.dataUrl} alt={p.name} onClick={()=>setLb(p.dataUrl)} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid #e5e7eb"}}/>
+        <button onClick={()=>onChange(photos.filter(x=>x.id!==p.id))} style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#111",color:"#fff",border:"none",cursor:"pointer",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
       </div>)}
       <label style={{width:sz,height:sz,border:"1.5px dashed #d1d5db",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#9ca3af",gap:2,flexShrink:0,background:"#f9fafb"}}>
-        <i className="ti ti-camera-plus" style={{fontSize:compact?16:20}}/>
-        {!compact&&<span style={{fontSize:10}}>Foto</span>}
+        <i className="ti ti-camera-plus" style={{fontSize:compact?16:20}}/>{!compact&&<span style={{fontSize:10}}>Foto</span>}
         <input ref={ref} type="file" accept="image/*" multiple onChange={handleFiles} style={{display:"none"}}/>
       </label>
     </div>
   </>;
 }
 function PhotoStrip({photos=[]}) {
-  const [lightbox,setLightbox]=useState(null);
+  const [lb,setLb]=useState(null);
   if(!photos?.length)return null;
   return <>
-    {lightbox&&<Lightbox src={lightbox} onClose={()=>setLightbox(null)}/>}
+    {lb&&<Lightbox src={lb} onClose={()=>setLb(null)}/>}
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
-      {photos.map(p=><img key={p.id} src={p.dataUrl} alt={p.name} onClick={()=>setLightbox(p.dataUrl)}
-        style={{width:56,height:56,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid #e5e7eb"}}/>)}
+      {photos.map(p=><img key={p.id} src={p.dataUrl} alt={p.name} onClick={()=>setLb(p.dataUrl)} style={{width:56,height:56,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid #e5e7eb"}}/>)}
     </div>
   </>;
 }
@@ -158,8 +133,7 @@ function BulletNotes({bullets,onChange,placeholder="Agregar punto…"}) {
     {bullets.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<bullets.length-1?6:0}}>
       <span style={{color:"#8b5cf6",fontSize:16,userSelect:"none",flexShrink:0}}>•</span>
       <input ref={el=>refs.current[i]=el} value={b} onChange={e=>update(i,e.target.value)} onKeyDown={e=>onKey(e,i)}
-        placeholder={i===0?placeholder:""}
-        style={{flex:1,background:"transparent",border:"none",outline:"none",fontSize:13,color:"#111827",fontFamily:"inherit",padding:"2px 0"}}/>
+        placeholder={i===0?placeholder:""} style={{flex:1,background:"transparent",border:"none",outline:"none",fontSize:13,color:"#111827",fontFamily:"inherit",padding:"2px 0"}}/>
       {bullets.length>1&&<button onClick={()=>removeAt(i)} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:12,padding:"0 2px",flexShrink:0}}>✕</button>}
     </div>)}
     <button onClick={()=>addAfter(bullets.length-1)} style={{marginTop:8,fontSize:11,color:"#8b5cf6",background:"none",border:"none",cursor:"pointer",padding:"2px 0",display:"flex",alignItems:"center",gap:4,fontWeight:500}}>
@@ -177,6 +151,31 @@ function BulletDisplay({bullets}) {
   </ul>;
 }
 
+function VisitCommentThread({visit,onAddComment,onResolve}) {
+  const [text,setText]=useState("");
+  const comments=visit.comments||[];
+  const submit=()=>{if(!text.trim())return;onAddComment(visit.id,text);setText("");};
+  return <div style={{borderTop:"1px solid #f3f4f6",paddingTop:10,marginTop:10}}>
+    {comments.length>0&&<div style={{marginBottom:10}}>
+      {comments.map(c=><div key={c.id} style={{display:"flex",gap:8,marginBottom:6}}>
+        <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2}}/>
+        <div><span style={{fontSize:11,color:"#9ca3af",marginRight:8}}>{fmt(c.date)}</span><span style={{fontSize:13,color:"#374151"}}>{c.text}</span></div>
+      </div>)}
+    </div>}
+    <div style={{display:"flex",gap:8,marginBottom:8}}>
+      <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}
+        placeholder="Agregar comentario a las notas…"
+        style={{flex:1,fontSize:13,padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#111827",fontFamily:"inherit"}}/>
+      <button onClick={submit} disabled={!text.trim()}
+        style={{padding:"6px 12px",fontSize:12,fontWeight:600,background:text.trim()?"#8b5cf6":"#f3f4f6",color:text.trim()?"#fff":"#9ca3af",border:"none",borderRadius:8,cursor:text.trim()?"pointer":"not-allowed"}}>Enviar</button>
+    </div>
+    {!visit.notesResolved&&<button onClick={()=>onResolve(visit.id)}
+      style={{width:"100%",padding:"7px",fontSize:12,fontWeight:600,background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+      <i className="ti ti-check" style={{fontSize:13}}/>Marcar notas como resueltas
+    </button>}
+  </div>;
+}
+
 function CommentThread({item,onAddComment,onResolve}) {
   const [text,setText]=useState("");
   const comments=item.comments||[];
@@ -185,10 +184,7 @@ function CommentThread({item,onAddComment,onResolve}) {
     {comments.length>0&&<div style={{marginBottom:12}}>
       {comments.map(c=><div key={c.id} style={{display:"flex",gap:10,marginBottom:8}}>
         <div style={{width:3,flexShrink:0,background:"#ede9fe",borderRadius:2}}/>
-        <div>
-          <div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{fmt(c.date)}</div>
-          <div style={{fontSize:13,color:"#374151",lineHeight:1.55}}>{c.text}</div>
-        </div>
+        <div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{fmt(c.date)}</div><div style={{fontSize:13,color:"#374151",lineHeight:1.55}}>{c.text}</div></div>
       </div>)}
     </div>}
     <div style={{display:"flex",gap:8}}>
@@ -210,12 +206,17 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,
   const [editing,setEditing]=useState(false);
   const [editDesc,setEditDesc]=useState(item.description);
   const comments=item.comments||[]; const p=typePal(item.type);
+  const isOverdue=item.alertDate&&item.alertDate<=today()&&item.status==="abierto";
   const saveEdit=()=>{onEditItem(item.id,editDesc);setEditing(false);};
-  return <div style={{background:"#fff",border:`1px solid ${item.status==="resuelto"?"#f3f4f6":p.border}`,borderRadius:12,padding:"14px 16px",marginBottom:8,opacity:item.status==="resuelto"?0.65:1,borderLeft:`3px solid ${item.status==="resuelto"?"#e5e7eb":p.fg}`}}>
+  return <div style={{background:"#fff",border:`1px solid ${isOverdue?"#fca5a5":item.status==="resuelto"?"#f3f4f6":p.border}`,borderRadius:12,padding:"14px 16px",marginBottom:8,opacity:item.status==="resuelto"?0.65:1,borderLeft:`3px solid ${isOverdue?"#ef4444":item.status==="resuelto"?"#e5e7eb":p.fg}`}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
       <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
         <TypeBadge type={item.type}/>
         {item.liceo&&<LiceoChip liceo={item.liceo}/>}
+        {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority}/>}
+        {item.alertDate&&item.status==="abierto"&&<span style={{fontSize:11,color:isOverdue?"#b91c1c":"#6b7280",background:isOverdue?"#fef2f2":"#f9fafb",padding:"1px 8px",borderRadius:8,border:`1px solid ${isOverdue?"#fca5a5":"#e5e7eb"}`,display:"flex",alignItems:"center",gap:3}}>
+          <i className="ti ti-bell" style={{fontSize:11}}/>{isOverdue?"Vencida":fmt(item.alertDate)}
+        </span>}
         {item.status==="resuelto"&&<Badge label="Resuelto" palette={PALETTE.green} icon="ti-check" size="sm"/>}
       </div>
       <span style={{fontSize:11,color:"#9ca3af",whiteSpace:"nowrap",flexShrink:0}}>{fmtS(visitDate)}</span>
@@ -230,20 +231,15 @@ function ItemCard({item,studentName,visitDate,onResolve,onAddComment,onEditItem,
       </div>
     </div>:<div style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:6}}>
       <p style={{margin:0,fontSize:14,color:"#111827",lineHeight:1.55,flex:1}}>{item.description}</p>
-      {item.status==="abierto"&&onEditItem&&<button onClick={()=>{setEditDesc(item.description);setEditing(true);}}
-        style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",padding:"2px",flexShrink:0}}>
+      {item.status==="abierto"&&onEditItem&&<button onClick={()=>{setEditDesc(item.description);setEditing(true);}} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",padding:"2px",flexShrink:0}}>
         <i className="ti ti-pencil" style={{fontSize:13}}/>
       </button>}
     </div>}
     <PhotoStrip photos={item.photos}/>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
       <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-        {showStudent&&studentName&&<span style={{fontSize:12,color:"#6b7280",display:"flex",alignItems:"center",gap:4}}>
-          <i className="ti ti-user" style={{fontSize:12}}/>{studentName}
-        </span>}
-        <span style={{fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",gap:4}}>
-          <i className="ti ti-calendar" style={{fontSize:12}}/>{fmt(visitDate)}
-        </span>
+        {showStudent&&studentName&&<span style={{fontSize:12,color:"#6b7280",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-user" style={{fontSize:12}}/>{studentName}</span>}
+        <span style={{fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",gap:4}}><i className="ti ti-calendar" style={{fontSize:12}}/>{fmt(visitDate)}</span>
       </div>
       <button onClick={()=>setExpanded(e=>!e)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,background:"none",border:"none",cursor:"pointer",color:"#8b5cf6",padding:0,fontWeight:500}}>
         <i className="ti ti-message-circle" style={{fontSize:13}}/>
@@ -263,64 +259,76 @@ function NavBtn({icon,label,active,badge,onClick,sub,color}) {
   </button>;
 }
 
-/* ── Modal nuevo estudiante ── */
 function NewStudentModal({onConfirm,onCancel}) {
-  const [nombre,setNombre]=useState("");
-  const [ci,setCi]=useState("");
-  const ok=nombre.trim().length>0;
+  const [nombre,setNombre]=useState(""); const [ci,setCi]=useState(""); const ok=nombre.trim().length>1;
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div style={{background:"#fff",borderRadius:16,padding:"28px 28px 24px",width:"100%",maxWidth:420,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-        <div style={{width:38,height:38,borderRadius:10,background:"#f5f3ff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <i className="ti ti-user-plus" style={{fontSize:18,color:"#8b5cf6"}}/>
-        </div>
-        <div>
-          <div style={{fontSize:16,fontWeight:700,color:"#111827"}}>Nuevo estudiante</div>
-          <div style={{fontSize:12,color:"#9ca3af"}}>Ingresá los datos del alumno</div>
-        </div>
-      </div>
-      <div style={{marginBottom:14}}>
+    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:400,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
+      <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:16}}>Nuevo alumno</div>
+      <div style={{marginBottom:12}}>
         <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>Nombre completo *</label>
-        <input autoFocus value={nombre} onChange={e=>setNombre(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&ok&&onConfirm(nombre.trim(),ci.trim())}
-          placeholder="Ej: Valentina García López"
-          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}
-          onFocus={e=>e.target.style.borderColor="#8b5cf6"}
-          onBlur={e=>e.target.style.borderColor="#e5e7eb"}
-        />
+        <input autoFocus value={nombre} onChange={e=>setNombre(e.target.value)} onKeyDown={e=>e.key==="Enter"&&ok&&onConfirm(nombre.trim(),ci.trim())}
+          placeholder="Ej: Juan Pérez" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}/>
       </div>
-      <div style={{marginBottom:22}}>
-        <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>
-          CI <span style={{fontWeight:400,color:"#9ca3af"}}>(opcional)</span>
-        </label>
-        <input value={ci} onChange={e=>setCi(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&ok&&onConfirm(nombre.trim(),ci.trim())}
-          placeholder="Ej: 5.234.567-8"
-          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}
-          onFocus={e=>e.target.style.borderColor="#8b5cf6"}
-          onBlur={e=>e.target.style.borderColor="#e5e7eb"}
-        />
+      <div style={{marginBottom:20}}>
+        <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>CI (opcional)</label>
+        <input value={ci} onChange={e=>setCi(e.target.value)} placeholder="Ej: 5.234.567-8"
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none"}}/>
       </div>
-      <div style={{display:"flex",gap:10}}>
-        <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14,fontWeight:500}}>Cancelar</button>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14}}>Cancelar</button>
         <button onClick={()=>ok&&onConfirm(nombre.trim(),ci.trim())} disabled={!ok}
-          style={{flex:2,padding:"9px",background:ok?"#8b5cf6":"#f3f4f6",color:ok?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:ok?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-          Agregar estudiante
+          style={{flex:2,padding:"9px",background:ok?"#8b5cf6":"#f3f4f6",color:ok?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:ok?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>Agregar estudiante</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function BulkImportModal({onConfirm,onCancel}) {
+  const [text,setText]=useState(""); const [preview,setPreview]=useState([]); const [error,setError]=useState("");
+  function parse(raw) {
+    const lines=raw.split("\n").map(l=>l.trim()).filter(Boolean);
+    const results=[]; const errs=[];
+    lines.forEach((line,i)=>{
+      const parts=line.split(/[,;\t]+/).map(p=>p.trim());
+      if(!parts[0])return;
+      if(parts[0].length<2){errs.push(`Línea ${i+1}: nombre muy corto`);return;}
+      results.push({nombre:parts[0],ci:parts[1]||""});
+    });
+    return {results,errs};
+  }
+  function handleChange(val) {
+    setText(val);
+    if(!val.trim()){setPreview([]);setError("");return;}
+    const {results,errs}=parse(val);
+    setPreview(results); setError(errs.length?errs.join(" · "):"");
+  }
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:520,boxShadow:"0 8px 40px rgba(0,0,0,.18)",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>Carga masiva de alumnos</div>
+      <div style={{fontSize:13,color:"#6b7280",marginBottom:14}}>Pegá una lista: <code style={{background:"#f3f4f6",padding:"1px 5px",borderRadius:4}}>Nombre, CI</code> (una por línea). CI opcional.</div>
+      <textarea value={text} onChange={e=>handleChange(e.target.value)} rows={8}
+        placeholder={"Juan Pérez, 5.234.567-8\nMaría García\nPedro López, 3.456.789-1"}
+        style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #e5e7eb",fontSize:13,fontFamily:"monospace",resize:"vertical",boxSizing:"border-box",marginBottom:10}}/>
+      {error&&<div style={{fontSize:12,color:"#b91c1c",marginBottom:8,background:"#fef2f2",padding:"6px 10px",borderRadius:6}}>{error}</div>}
+      {preview.length>0&&<div style={{fontSize:12,color:"#166534",marginBottom:12,background:"#f0fdf4",padding:"6px 10px",borderRadius:6}}>{preview.length} alumno{preview.length!==1?"s":""} listos para importar</div>}
+      <div style={{display:"flex",gap:8,marginTop:"auto"}}>
+        <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14}}>Cancelar</button>
+        <button onClick={()=>preview.length>0&&onConfirm(preview)} disabled={preview.length===0}
+          style={{flex:2,padding:"9px",background:preview.length>0?"#8b5cf6":"#f3f4f6",color:preview.length>0?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:preview.length>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+          Importar {preview.length>0?`${preview.length} alumnos`:""}
         </button>
       </div>
     </div>
   </div>;
 }
 
-/* ── Edit CI modal ── */
 function EditCIModal({student,onConfirm,onCancel}) {
   const [ci,setCi]=useState(student.ci||"");
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div style={{background:"#fff",borderRadius:16,padding:"24px 24px 20px",width:"100%",maxWidth:360,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
+    <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:360,boxShadow:"0 8px 40px rgba(0,0,0,.18)"}}>
       <div style={{fontSize:15,fontWeight:700,color:"#111827",marginBottom:4}}>Editar CI</div>
       <div style={{fontSize:13,color:"#6b7280",marginBottom:16}}>{student.name}</div>
-      <input autoFocus value={ci} onChange={e=>setCi(e.target.value)}
-        onKeyDown={e=>e.key==="Enter"&&onConfirm(ci.trim())}
+      <input autoFocus value={ci} onChange={e=>setCi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onConfirm(ci.trim())}
         placeholder="Ej: 5.234.567-8"
         style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #8b5cf6",fontSize:14,fontFamily:"inherit",color:"#111827",boxSizing:"border-box",outline:"none",marginBottom:16}}/>
       <div style={{display:"flex",gap:8}}>
@@ -338,8 +346,7 @@ function InlineTA({type,setType,liceo,setLiceo,allFormLiceos,allTypeOptions,lice
       <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Tipo</label>
       {typeAdding?<div style={{display:"flex",gap:4}}>
         <input autoFocus value={typeNewVal} onChange={e=>setTypeNewVal(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"){const v=confirmNewType();if(v)setType(v);}if(e.key==="Escape"){setTypeAdding(false);setTypeNewVal("");}}}
-          placeholder="Nuevo tipo…" style={{...inp,flex:1}}/>
+          onKeyDown={e=>{if(e.key==="Enter"){const v=confirmNewType();if(v)setType(v);}if(e.key==="Escape"){setTypeAdding(false);setTypeNewVal("");}}} placeholder="Nuevo tipo…" style={{...inp,flex:1}}/>
         <button onClick={()=>{const v=confirmNewType();if(v)setType(v);}} style={{padding:"7px 10px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:8,cursor:"pointer"}}>✓</button>
         <button onClick={()=>{setTypeAdding(false);setTypeNewVal("");}} style={{padding:"7px 10px",background:"transparent",border:"1px solid #e5e7eb",color:"#6b7280",borderRadius:8,cursor:"pointer"}}>✕</button>
       </div>:<select value={type} onChange={e=>{if(e.target.value==="__new__")setTypeAdding(true);else setType(e.target.value);}} style={inp}>
@@ -351,8 +358,7 @@ function InlineTA({type,setType,liceo,setLiceo,allFormLiceos,allTypeOptions,lice
       <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Liceo (si aplica)</label>
       {liceoAdding?<div style={{display:"flex",gap:4}}>
         <input autoFocus value={liceoNewVal} onChange={e=>setLiceoNewVal(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"){const v=confirmNewLiceo();if(v)setLiceo(v);}if(e.key==="Escape"){setLiceoAdding(false);setLiceoNewVal("");}}}
-          placeholder="Nuevo liceo…" style={{...inp,flex:1}}/>
+          onKeyDown={e=>{if(e.key==="Enter"){const v=confirmNewLiceo();if(v)setLiceo(v);}if(e.key==="Escape"){setLiceoAdding(false);setLiceoNewVal("");}}} placeholder="Nuevo liceo…" style={{...inp,flex:1}}/>
         <button onClick={()=>{const v=confirmNewLiceo();if(v)setLiceo(v);}} style={{padding:"7px 10px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:8,cursor:"pointer"}}>✓</button>
         <button onClick={()=>{setLiceoAdding(false);setLiceoNewVal("");}} style={{padding:"7px 10px",background:"transparent",border:"1px solid #e5e7eb",color:"#6b7280",borderRadius:8,cursor:"pointer"}}>✕</button>
       </div>:<select value={liceo} onChange={e=>{if(e.target.value==="__new__")setLiceoAdding(true);else setLiceo(e.target.value);}} style={inp}>
@@ -365,15 +371,32 @@ function InlineTA({type,setType,liceo,setLiceo,allFormLiceos,allTypeOptions,lice
 }
 
 function InlineAddItem({allFormLiceos,allTypeOptions,onAdd,onCancel,showCancel=false,...shared}) {
-  const [type,setType]=useState("contacto");
-  const [liceo,setLiceo]=useState("");
-  const [desc,setDesc]=useState("");
-  const [photos,setPhotos]=useState([]);
+  const [type,setType]=useState("contacto"); const [liceo,setLiceo]=useState(""); const [desc,setDesc]=useState("");
+  const [photos,setPhotos]=useState([]); const [priority,setPriority]=useState("media"); const [alertDate,setAlertDate]=useState(""); const [showExtra,setShowExtra]=useState(false);
   const inp={padding:"7px 11px",borderRadius:8,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#111827",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"};
-  const handleAdd=()=>{if(!desc.trim())return;onAdd({type,liceo,description:desc,photos});setType("contacto");setLiceo("");setDesc("");setPhotos([]);};
+  const handleAdd=()=>{
+    if(!desc.trim())return;
+    onAdd({type,liceo,description:desc,photos,priority,alertDate:alertDate||null});
+    setType("contacto");setLiceo("");setDesc("");setPhotos([]);setPriority("media");setAlertDate("");setShowExtra(false);
+  };
   return <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
     <InlineTA type={type} setType={setType} liceo={liceo} setLiceo={setLiceo} allFormLiceos={allFormLiceos} allTypeOptions={allTypeOptions} {...shared}/>
     <div style={{marginBottom:10}}><input value={desc} onChange={e=>setDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdd()} placeholder="Descripción de la tarea…" style={inp}/></div>
+    <button onClick={()=>setShowExtra(e=>!e)} style={{fontSize:12,color:"#6b7280",background:"none",border:"none",cursor:"pointer",padding:"0 0 8px",display:"flex",alignItems:"center",gap:4}}>
+      <i className={`ti ${showExtra?"ti-chevron-up":"ti-chevron-down"}`} style={{fontSize:11}}/>{showExtra?"Ocultar opciones":"＋ Prioridad y alerta"}
+    </button>
+    {showExtra&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+      <div>
+        <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Prioridad</label>
+        <select value={priority} onChange={e=>setPriority(e.target.value)} style={inp}>
+          <option value="alta">🔴 Alta</option><option value="media">🟡 Media</option><option value="baja">🔵 Baja</option>
+        </select>
+      </div>
+      <div>
+        <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Alerta para el día</label>
+        <input type="date" value={alertDate} onChange={e=>setAlertDate(e.target.value)} style={inp}/>
+      </div>
+    </div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
       <PhotoPicker photos={photos} onChange={setPhotos} compact/>
       <div style={{display:"flex",gap:8,flexShrink:0}}>
@@ -409,52 +432,96 @@ function LoginScreen({onSelect}) {
   </div>;
 }
 
+function VisitCard({visit,items,onStartEdit,onAddVisitComment,onResolveVisitNotes,onResolveItem,onAddComment,onEditItemText}) {
+  const [showVC,setShowVC]=useState(false);
+  const vis=items.filter(i=>i.visitId===visit.id);
+  const oc=vis.filter(i=>i.status==="abierto").length;
+  const bl=visit.bullets?.length?visit.bullets.filter(b=>b.trim()):(visit.notes?[visit.notes]:[]);
+  return <div style={{background:"#fff",border:"1px solid #f3f4f6",borderRadius:12,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:vis.length?10:0}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#111827",marginBottom:bl.length?4:0}}>{fmt(visit.date)}</div>
+        <BulletDisplay bullets={bl}/>
+        <PhotoStrip photos={visit.photos}/>
+        <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>setShowVC(e=>!e)}
+            style={{fontSize:12,color:"#8b5cf6",background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4,fontWeight:500}}>
+            <i className="ti ti-message-circle" style={{fontSize:13}}/>
+            {(visit.comments||[]).length>0?`${visit.comments.length} comentario${visit.comments.length>1?"s":""}`:"Comentar notas"}
+            <i className={`ti ${showVC?"ti-chevron-up":"ti-chevron-down"}`} style={{fontSize:11}}/>
+          </button>
+          {visit.notesResolved&&<span style={{fontSize:11,color:"#166534",fontWeight:600,display:"flex",alignItems:"center",gap:3}}><i className="ti ti-check" style={{fontSize:11}}/>Notas resueltas</span>}
+        </div>
+        {showVC&&<VisitCommentThread visit={visit} onAddComment={onAddVisitComment} onResolve={onResolveVisitNotes}/>}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0,marginLeft:12}}>
+        {vis.length>0&&<span style={{fontSize:11,fontWeight:600,color:oc>0?"#b45309":"#166534",background:oc>0?"#fffbeb":"#f0fdf4",padding:"2px 8px",borderRadius:8,border:`1px solid ${oc>0?"#fcd34d":"#86efac"}`}}>{oc>0?`${oc} abierta${oc!==1?"s":""}` :"✓ Todo ok"}</span>}
+        <button onClick={()=>onStartEdit(visit.id)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,padding:"5px 11px",border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",borderRadius:7,cursor:"pointer",fontWeight:500}}>
+          <i className="ti ti-pencil" style={{fontSize:12}}/> Editar
+        </button>
+      </div>
+    </div>
+    {vis.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #f9fafb",flexWrap:"wrap"}}>
+      <TypeBadge type={item.type} size="sm"/>{item.liceo&&<LiceoChip liceo={item.liceo} size="sm"/>}
+      {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
+      <span style={{fontSize:13,color:"#374151",flex:1,minWidth:120}}>{item.description}</span>
+      {item.alertDate&&<span style={{fontSize:11,color:item.alertDate<=today()?"#b91c1c":"#6b7280",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-bell" style={{fontSize:11}}/>{fmtS(item.alertDate)}</span>}
+      {(item.photos||[]).length>0&&<span style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-photo" style={{fontSize:12}}/>{item.photos.length}</span>}
+      {(item.comments||[]).length>0&&<span style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-message-circle" style={{fontSize:12}}/>{item.comments.length}</span>}
+      {item.status==="abierto"?<button onClick={()=>onResolveItem(item.id)} style={{fontSize:11,padding:"2px 9px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:6,cursor:"pointer",flexShrink:0,fontWeight:600}}>✓ Resolver</button>:<span style={{fontSize:11,color:"#166534",fontWeight:700}}>✓ Resuelto</span>}
+    </div>)}
+  </div>;
+}
+
 export default function App() {
-  /* ── hooks ── */
   const [currentUser,setCurrentUser] = useState(null);
   const [loaded,setLoaded]           = useState(false);
   const unsubRef = useRef([]);
 
-  const [students,setStudents]       = useState([]);   // "locales" → estudiantes
-  const [visits,setVisits]           = useState([]);
-  const [items,setItems]             = useState([]);
+  const [students,setStudents]         = useState([]);
+  const [visits,setVisits]             = useState([]);
+  const [items,setItems]               = useState([]);
   const [customLiceos,setCustomLiceos] = useState([]);
-  const [customTypes,setCustomTypes] = useState([]);
+  const [customTypes,setCustomTypes]   = useState([]);
 
   const [view,setView]               = useState("dashboard");
   const [selStudId,setSelStudId]     = useState(null);
   const [showNewStudentModal,setShowNewStudentModal] = useState(false);
+  const [showBulkImport,setShowBulkImport]           = useState(false);
   const [editingStudId,setEditingStudId] = useState(null);
   const [editStudName,setEditStudName]   = useState("");
-  const [editCIModal,setEditCIModal]     = useState(null); // student obj
+  const [editCIModal,setEditCIModal]     = useState(null);
 
-  const [fLiceo,setFLiceo]           = useState("");
-  const [fType,setFType]             = useState("");
-  const [fStud,setFStud]             = useState("");
+  const [fLiceo,setFLiceo]       = useState("");
+  const [fType,setFType]         = useState("");
+  const [fStud,setFStud]         = useState("");
+  const [fPriority,setFPriority] = useState("");
   const [showResolved,setShowResolved] = useState(false);
 
-  const [nvStudId,setNvStudId]       = useState("");
-  const [nvDate,setNvDate]           = useState(today());
-  const [nvBullets,setNvBullets]     = useState([""]);
-  const [nvPhotos,setNvPhotos]       = useState([]);
-  const [nvItems,setNvItems]         = useState([]);
+  const [nvStudId,setNvStudId]   = useState("");
+  const [nvDate,setNvDate]       = useState(today());
+  const [nvBullets,setNvBullets] = useState([""]);
+  const [nvPhotos,setNvPhotos]   = useState([]);
+  const [nvItems,setNvItems]     = useState([]);
 
   const [liceoAdding,setLiceoAdding] = useState(false);
   const [liceoNewVal,setLiceoNewVal] = useState("");
   const [typeAdding,setTypeAdding]   = useState(false);
   const [typeNewVal,setTypeNewVal]   = useState("");
 
-  const [editVid,setEditVid]         = useState(null);
-  const [editDate,setEditDate]       = useState("");
-  const [editBullets,setEditBullets] = useState([""]);
-  const [editPhotos,setEditPhotos]   = useState([]);
-  const [editItems,setEditItems]     = useState([]);
-  const [editDelIds,setEditDelIds]   = useState(new Set());
-  const [editItemId,setEditItemId]   = useState(null);
-  const [eiType,setEiType]           = useState("");
-  const [eiLiceo,setEiLiceo]         = useState("");
-  const [eiDesc,setEiDesc]           = useState("");
-  const [eiPhotos,setEiPhotos]       = useState([]);
+  const [editVid,setEditVid]           = useState(null);
+  const [editDate,setEditDate]         = useState("");
+  const [editBullets,setEditBullets]   = useState([""]);
+  const [editPhotos,setEditPhotos]     = useState([]);
+  const [editItems,setEditItems]       = useState([]);
+  const [editDelIds,setEditDelIds]     = useState(new Set());
+  const [editItemId,setEditItemId]     = useState(null);
+  const [eiType,setEiType]             = useState("");
+  const [eiLiceo,setEiLiceo]           = useState("");
+  const [eiDesc,setEiDesc]             = useState("");
+  const [eiPhotos,setEiPhotos]         = useState([]);
+  const [eiPriority,setEiPriority]     = useState("media");
+  const [eiAlertDate,setEiAlertDate]   = useState("");
   const [showAddInEdit,setShowAddInEdit] = useState(false);
 
   const [sidebarOpen,setSidebarOpen] = useState(true);
@@ -462,18 +529,13 @@ export default function App() {
 
   useEffect(()=>{
     const check=()=>{ const m=window.innerWidth<640; setIsMobile(m); if(!m)setSidebarOpen(true); };
-    check();
-    window.addEventListener("resize",check);
-    return ()=>window.removeEventListener("resize",check);
+    check(); window.addEventListener("resize",check); return ()=>window.removeEventListener("resize",check);
   },[]);
   useEffect(()=>()=>unsubRef.current.forEach(fn=>fn()),[]);
 
-  /* ── auth ── */
   function selectUser(u) {
     unsubRef.current.forEach(fn=>fn());
-    setCurrentUser(u);
-    setStudents([]); setVisits([]); setItems([]);
-    setCustomLiceos([]); setCustomTypes([]);
+    setCurrentUser(u); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]);
     setLoaded(true); setView("dashboard");
     const uid=u.id;
     unsubRef.current=[
@@ -485,9 +547,7 @@ export default function App() {
   }
   function logout() {
     unsubRef.current.forEach(fn=>fn()); unsubRef.current=[];
-    setCurrentUser(null); setLoaded(false);
-    setStudents([]); setVisits([]); setItems([]);
-    setCustomLiceos([]); setCustomTypes([]);
+    setCurrentUser(null); setLoaded(false); setStudents([]); setVisits([]); setItems([]); setCustomLiceos([]); setCustomTypes([]);
   }
   function navAndClose(fn) { fn(); if(isMobile) setSidebarOpen(false); }
 
@@ -497,44 +557,27 @@ export default function App() {
   const allItemTypes=[...new Set(items.map(i=>i.type))];
 
   function confirmNewLiceo(){
-    const val=liceoNewVal.trim(); setLiceoAdding(false); setLiceoNewVal("");
-    if(!val)return null;
-    const existing=[...LICEOS_DEFAULT,...customLiceos];
-    const n=existing.includes(val)?customLiceos:[...customLiceos,val];
+    const val=liceoNewVal.trim(); setLiceoAdding(false); setLiceoNewVal(""); if(!val)return null;
+    const n=[...LICEOS_DEFAULT,...customLiceos].includes(val)?customLiceos:[...customLiceos,val];
     setCustomLiceos(n); fbSetCfg(uid,{customAreas:n,customTypes}); return val;
   }
   function confirmNewType(){
-    const val=typeNewVal.trim(); setTypeAdding(false); setTypeNewVal("");
-    if(!val)return null;
+    const val=typeNewVal.trim(); setTypeAdding(false); setTypeNewVal(""); if(!val)return null;
     const n=[...Object.keys(ITEM_TYPES),...customTypes].includes(val)?customTypes:[...customTypes,val];
     setCustomTypes(n); fbSetCfg(uid,{customAreas:customLiceos,customTypes:n}); return val;
   }
   const sharedTA={allFormLiceos,allTypeOptions,liceoAdding,setLiceoAdding,liceoNewVal,setLiceoNewVal,confirmNewLiceo,typeAdding,setTypeAdding,typeNewVal,setTypeNewVal,confirmNewType};
 
-  /* ── student actions ── */
-  function addStudent(nombre,ci) {
-    const s={id:genId(),name:nombre,ci:ci||""};
-    fbSet(uid,"locations",s.id,s);
-    setShowNewStudentModal(false);
-  }
-  function saveStudName(id){
-    if(!editStudName.trim())return;
-    const s=students.find(s=>s.id===id); if(!s)return;
-    const u={...s,name:editStudName.trim()};
-    setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditingStudId(null);
-  }
-  function saveStudCI(id,ci){
-    const s=students.find(s=>s.id===id); if(!s)return;
-    const u={...s,ci};
-    setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditCIModal(null);
-  }
+  function addStudent(nombre,ci){ const s={id:genId(),name:nombre,ci:ci||""}; fbSet(uid,"locations",s.id,s); setShowNewStudentModal(false); }
+  function bulkAddStudents(list){ list.forEach(({nombre,ci})=>{ const s={id:genId(),name:nombre,ci:ci||""}; fbSet(uid,"locations",s.id,s); }); setShowBulkImport(false); }
+  function saveStudName(id){ if(!editStudName.trim())return; const s=students.find(s=>s.id===id); if(!s)return; const u={...s,name:editStudName.trim()}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditingStudId(null); }
+  function saveStudCI(id,ci){ const s=students.find(s=>s.id===id); if(!s)return; const u={...s,ci}; setStudents(p=>p.map(x=>x.id===id?u:x)); fbSet(uid,"locations",id,u); setEditCIModal(null); }
 
-  /* ── visit actions ── */
   async function submitVisit(){
     if(!nvStudId||!nvDate)return;
     const visitId=genId();
-    const visit={id:visitId,locationId:nvStudId,date:nvDate,bullets:nvBullets,photos:nvPhotos};
-    const newItems=nvItems.map(it=>({...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[]}));
+    const visit={id:visitId,locationId:nvStudId,date:nvDate,bullets:nvBullets,photos:nvPhotos,comments:[],notesResolved:false};
+    const newItems=nvItems.map(it=>({...it,id:genId(),visitId,locationId:nvStudId,createdAt:nvDate,status:"abierto",comments:[],priority:it.priority||"media",alertDate:it.alertDate||null}));
     const batch=writeBatch(db);
     batch.set(doc(db,`users/${uid}/visits/${visitId}`),visit);
     newItems.forEach(it=>batch.set(doc(db,`users/${uid}/items/${it.id}`),it));
@@ -542,38 +585,24 @@ export default function App() {
     setNvItems([]); setNvBullets([""]); setNvDate(today()); setNvPhotos([]);
     setSelStudId(nvStudId); setView("student");
   }
-  function resolveItem(id){
-    const it=items.find(i=>i.id===id); if(!it)return;
-    const u={...it,status:"resuelto",resolvedAt:today()};
-    setItems(p=>p.map(i=>i.id===id?u:i)); fbSet(uid,"items",id,u);
-  }
-  function addComment(itemId,text){
-    const it=items.find(i=>i.id===itemId); if(!it)return;
-    const c={id:genId(),text:text.trim(),date:today()};
-    const u={...it,comments:[...(it.comments||[]),c]};
-    setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u);
-  }
-  function editItemText(itemId,newDesc){
-    const it=items.find(i=>i.id===itemId); if(!it)return;
-    const u={...it,description:newDesc};
-    setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u);
-  }
+  function resolveItem(id){ const it=items.find(i=>i.id===id); if(!it)return; const u={...it,status:"resuelto",resolvedAt:today()}; setItems(p=>p.map(i=>i.id===id?u:i)); fbSet(uid,"items",id,u); }
+  function addComment(itemId,text){ const it=items.find(i=>i.id===itemId); if(!it)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...it,comments:[...(it.comments||[]),c]}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
+  function editItemText(itemId,newDesc){ const it=items.find(i=>i.id===itemId); if(!it)return; const u={...it,description:newDesc}; setItems(p=>p.map(i=>i.id===itemId?u:i)); fbSet(uid,"items",itemId,u); }
+  function addVisitComment(visitId,text){ const v=visits.find(v=>v.id===visitId); if(!v)return; const c={id:genId(),text:text.trim(),date:today()}; const u={...v,comments:[...(v.comments||[]),c]}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
+  function resolveVisitNotes(visitId){ const v=visits.find(v=>v.id===visitId); if(!v)return; const u={...v,notesResolved:true}; setVisits(p=>p.map(x=>x.id===visitId?u:x)); fbSet(uid,"visits",visitId,u); }
+
   function startEdit(visitId){
     const v=visits.find(v=>v.id===visitId); if(!v)return;
     setEditVid(visitId); setEditDate(v.date);
     setEditBullets(v.bullets?.length?v.bullets:[v.notes||""]);
     setEditPhotos(v.photos||[]);
     setEditItems(items.filter(i=>i.visitId===visitId).map(i=>({...i})));
-    setEditDelIds(new Set()); setEditItemId(null); setShowAddInEdit(false);
-    setView("editvisit");
+    setEditDelIds(new Set()); setEditItemId(null); setShowAddInEdit(false); setView("editvisit");
   }
-  function startEditItem(it){setEditItemId(it.id);setEiType(it.type);setEiLiceo(it.liceo||"");setEiDesc(it.description);setEiPhotos(it.photos||[]);}
-  function saveEditItem(id){setEditItems(p=>p.map(it=>it.id===id?{...it,type:eiType,liceo:eiLiceo,description:eiDesc,photos:eiPhotos}:it));setEditItemId(null);}
+  function startEditItem(it){setEditItemId(it.id);setEiType(it.type);setEiLiceo(it.liceo||"");setEiDesc(it.description);setEiPhotos(it.photos||[]);setEiPriority(it.priority||"media");setEiAlertDate(it.alertDate||"");}
+  function saveEditItem(id){setEditItems(p=>p.map(it=>it.id===id?{...it,type:eiType,liceo:eiLiceo,description:eiDesc,photos:eiPhotos,priority:eiPriority,alertDate:eiAlertDate||null}:it));setEditItemId(null);}
   function deleteEditItem(id){setEditDelIds(p=>new Set([...p,id]));if(editItemId===id)setEditItemId(null);}
-  function addEditItem(item){
-    setEditItems(p=>[...p,{...item,id:genId(),visitId:editVid,locationId:visits.find(v=>v.id===editVid)?.locationId,createdAt:editDate,status:"abierto",comments:[]}]);
-    setShowAddInEdit(false);
-  }
+  function addEditItem(item){setEditItems(p=>[...p,{...item,id:genId(),visitId:editVid,locationId:visits.find(v=>v.id===editVid)?.locationId,createdAt:editDate,status:"abierto",comments:[],priority:item.priority||"media",alertDate:item.alertDate||null}]);setShowAddInEdit(false);}
   async function saveEdit(){
     const orig=visits.find(v=>v.id===editVid);
     const updV={...orig,date:editDate,bullets:editBullets,photos:editPhotos};
@@ -588,9 +617,10 @@ export default function App() {
     setView("student");
   }
 
-  /* derived */
   const openItems=items.filter(i=>i.status==="abierto");
   const resolvedItems=items.filter(i=>i.status==="resuelto");
+  const overdueItems=openItems.filter(i=>i.alertDate&&i.alertDate<=today());
+  const highPriorityItems=openItems.filter(i=>i.priority==="alta");
   const allLiceos=[...new Set(openItems.filter(i=>i.liceo).map(i=>i.liceo))].sort();
   const allResolvedLiceos=[...new Set(resolvedItems.filter(i=>i.liceo).map(i=>i.liceo))].sort();
   const selStud=students.find(s=>s.id===selStudId);
@@ -598,32 +628,25 @@ export default function App() {
   const studOpen=selStud?items.filter(i=>i.locationId===selStudId&&i.status==="abierto"):[];
   const prevOpen=nvStudId?items.filter(i=>i.locationId===nvStudId&&i.status==="abierto"):[];
   const editStud=editVid?students.find(s=>s.id===visits.find(v=>v.id===editVid)?.locationId):null;
-  const pendFiltered=openItems.filter(i=>!fLiceo||i.liceo===fLiceo).filter(i=>!fType||i.type===fType).filter(i=>!fStud||i.locationId===fStud).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+  const pendFiltered=openItems.filter(i=>!fLiceo||i.liceo===fLiceo).filter(i=>!fType||i.type===fType).filter(i=>!fStud||i.locationId===fStud).filter(i=>!fPriority||i.priority===fPriority)
+    .sort((a,b)=>{ const po={alta:0,media:1,baja:2}; const pa=po[a.priority]??1, pb=po[b.priority]??1; if(pa!==pb)return pa-pb; return (b.createdAt||"").localeCompare(a.createdAt||""); });
   const resolvedFiltered=resolvedItems.filter(i=>!fLiceo||i.liceo===fLiceo).filter(i=>!fStud||i.locationId===fStud).sort((a,b)=>(b.resolvedAt||b.createdAt||"").localeCompare(a.resolvedAt||a.createdAt||""));
 
-  /* render guard */
   if(!currentUser) return <LoginScreen onSelect={selectUser}/>;
 
   const SL=({children})=><div style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"#9ca3af",padding:"8px 18px 4px"}}>{children}</div>;
 
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:"system-ui,sans-serif",background:"#f8f9fb",position:"relative"}}>
-
-      {/* modals */}
       {showNewStudentModal&&<NewStudentModal onConfirm={addStudent} onCancel={()=>setShowNewStudentModal(false)}/>}
+      {showBulkImport&&<BulkImportModal onConfirm={bulkAddStudents} onCancel={()=>setShowBulkImport(false)}/>}
       {editCIModal&&<EditCIModal student={editCIModal} onConfirm={ci=>saveStudCI(editCIModal.id,ci)} onCancel={()=>setEditCIModal(null)}/>}
 
-      {/* mobile overlay */}
-      {sidebarOpen&&isMobile&&<div onClick={()=>setSidebarOpen(false)}
-        style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",zIndex:40}}/>}
-
-      {/* hamburger */}
-      <button onClick={()=>setSidebarOpen(o=>!o)}
-        style={{position:"fixed",top:12,left:12,zIndex:50,width:36,height:36,borderRadius:9,background:"#fff",border:"1px solid #e5e7eb",boxShadow:"0 1px 4px rgba(0,0,0,.1)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#374151"}}>
+      {sidebarOpen&&isMobile&&<div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",zIndex:40}}/>}
+      <button onClick={()=>setSidebarOpen(o=>!o)} style={{position:"fixed",top:12,left:12,zIndex:50,width:36,height:36,borderRadius:9,background:"#fff",border:"1px solid #e5e7eb",boxShadow:"0 1px 4px rgba(0,0,0,.1)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#374151"}}>
         <i className={`ti ${sidebarOpen?"ti-x":"ti-menu-2"}`} style={{fontSize:17}}/>
       </button>
 
-      {/* sidebar */}
       <aside style={{width:228,background:"#fff",borderRight:"1px solid #f3f4f6",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,.06)",position:isMobile?"fixed":"sticky",top:0,left:0,height:"100vh",zIndex:45,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",transition:"transform .22s ease"}}>
         <div style={{padding:"20px 18px 16px",borderBottom:"1px solid #f3f4f6",paddingLeft:56}}>
           <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#9ca3af",marginBottom:10}}>Proyecto 3F</div>
@@ -644,13 +667,17 @@ export default function App() {
           <div style={{height:"1px",background:"#f3f4f6",margin:"8px 0"}}/>
           <SL>Seguimiento</SL>
           <NavBtn icon="ti-clock-exclamation" label="Tareas abiertas" active={view==="pending"&&!showResolved} badge={openItems.length}
-            onClick={()=>navAndClose(()=>{setFLiceo("");setFType("");setFStud("");setShowResolved(false);setView("pending");})} color={currentUser.color}/>
+            onClick={()=>navAndClose(()=>{setFLiceo("");setFType("");setFStud("");setFPriority("");setShowResolved(false);setView("pending");})} color={currentUser.color}/>
+          <NavBtn icon="ti-alert-triangle" label="Alta prioridad" active={view==="priority"} badge={highPriorityItems.length}
+            onClick={()=>navAndClose(()=>setView("priority"))} color="#b91c1c"/>
+          <NavBtn icon="ti-bell" label="Alertas vencidas" active={view==="alerts"} badge={overdueItems.length}
+            onClick={()=>navAndClose(()=>setView("alerts"))} color="#f59e0b"/>
           <NavBtn icon="ti-circle-check" label="Historial resueltos" active={view==="pending"&&showResolved} badge={resolvedItems.length}
-            onClick={()=>navAndClose(()=>{setFLiceo("");setFType("");setFStud("");setShowResolved(true);setView("pending");})} color="#10b981"/>
-          {!showResolved&&allLiceos.slice(0,6).map(liceo=>{
+            onClick={()=>navAndClose(()=>{setFLiceo("");setFType("");setFStud("");setFPriority("");setShowResolved(true);setView("pending");})} color="#10b981"/>
+          {!showResolved&&allLiceos.slice(0,5).map(liceo=>{
             const n=openItems.filter(i=>i.liceo===liceo).length;
             return <NavBtn key={liceo} icon="ti-school" label={liceo} sub active={view==="pending"&&fLiceo===liceo&&!showResolved} badge={n}
-              onClick={()=>navAndClose(()=>{setFLiceo(liceo);setFType("");setFStud("");setShowResolved(false);setView("pending");})}/>;
+              onClick={()=>navAndClose(()=>{setFLiceo(liceo);setFType("");setFStud("");setFPriority("");setShowResolved(false);setView("pending");})}/>;
           })}
           <div style={{height:"1px",background:"#f3f4f6",margin:"8px 0"}}/>
           <NavBtn icon="ti-calendar-plus" label="Nueva Gestión" active={view==="newvisit"} onClick={()=>navAndClose(()=>{setNvStudId("");setView("newvisit");})} color={currentUser.color}/>
@@ -660,29 +687,31 @@ export default function App() {
         </div>
       </aside>
 
-      {/* main */}
       <main style={{flex:1,overflow:"auto",paddingTop:isMobile?52:0}}>
 
-        {/* DASHBOARD */}
         {view==="dashboard"&&(
           <div style={{padding:"28px",maxWidth:780}}>
             <div style={{marginBottom:24}}>
               <h1 style={{fontSize:24,fontWeight:700,margin:"0 0 4px",color:"#111827",paddingLeft:isMobile?0:48}}>Inicio</h1>
               <div style={{fontSize:14,color:"#6b7280",paddingLeft:isMobile?0:48}}>Bienvenido/a, {currentUser.name}</div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:28}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:28}}>
               <StatCard label="Alumnos activos" value={students.length} icon="ti-users" palette={PALETTE.purple}/>
               <StatCard label="Gestiones totales" value={visits.length} icon="ti-calendar-event" palette={PALETTE.sky}/>
-              <StatCard label="Tareas abiertas" value={openItems.length} icon="ti-clock-exclamation" palette={openItems.length>0?PALETTE.amber:PALETTE.green}
-                onClick={()=>{setFLiceo("");setFType("");setFStud("");setShowResolved(false);setView("pending");}}/>
-              <StatCard label="Resueltas" value={resolvedItems.length} icon="ti-circle-check" palette={PALETTE.green}
-                onClick={()=>{setFLiceo("");setFType("");setFStud("");setShowResolved(true);setView("pending");}}/>
+              <StatCard label="Tareas abiertas" value={openItems.length} icon="ti-clock-exclamation" palette={openItems.length>0?PALETTE.amber:PALETTE.green} onClick={()=>{setFLiceo("");setFType("");setFStud("");setFPriority("");setShowResolved(false);setView("pending");}}/>
+              <StatCard label="Alta prioridad" value={highPriorityItems.length} icon="ti-alert-triangle" palette={highPriorityItems.length>0?PALETTE.red:PALETTE.green} onClick={()=>setView("priority")}/>
+              <StatCard label="Alertas vencidas" value={overdueItems.length} icon="ti-bell" palette={overdueItems.length>0?PALETTE.orange:PALETTE.green} onClick={()=>setView("alerts")}/>
             </div>
+            {overdueItems.length>0&&<div style={{marginBottom:24,background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:"16px"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#c2410c",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+                <i className="ti ti-bell" style={{fontSize:14}}/>Alertas vencidas hoy ({overdueItems.length})
+              </div>
+              {overdueItems.slice(0,3).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>}
             {allLiceos.length>0&&<div style={{marginBottom:28}}>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Tareas abiertas por liceo</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:8}}>
                 {allLiceos.map(liceo=>{const n=openItems.filter(i=>i.liceo===liceo).length;const p=liceoPal(liceo);return(
-                  <button key={liceo} onClick={()=>{setFLiceo(liceo);setFType("");setFStud("");setShowResolved(false);setView("pending");}}
+                  <button key={liceo} onClick={()=>{setFLiceo(liceo);setFType("");setFStud("");setFPriority("");setShowResolved(false);setView("pending");}}
                     style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:p.bg,border:`1px solid ${p.border}`,borderRadius:10,cursor:"pointer",textAlign:"left"}}>
                     <span style={{fontSize:13,color:p.fg,fontWeight:600}}>{liceo}</span>
                     <span style={{background:"#fff",color:p.fg,fontSize:12,padding:"2px 10px",borderRadius:10,fontWeight:700,border:`1px solid ${p.border}`}}>{n}</span>
@@ -692,15 +721,7 @@ export default function App() {
             </div>}
             {openItems.length>0&&<div>
               <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Últimas tareas abiertas</div>
-              {[...openItems].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,4).map(item=>{
-                const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);
-                return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;
-              })}
-              {openItems.length>4&&<button onClick={()=>{setFLiceo("");setFType("");setFStud("");setShowResolved(false);setView("pending");}}
-                style={{width:"100%",padding:"10px",border:"1.5px dashed #ddd6fe",background:"#f5f3ff",color:"#6d28d9",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                Ver todas las tareas ({openItems.length}) ↗
-              </button>}
-            </div>}
+              {[...openItems].sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,4).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>}
             {students.length===0&&<div style={{textAlign:"center",padding:"60px 24px",background:"#f5f3ff",borderRadius:16,border:"1px dashed #c4b5fd"}}>
               <i className="ti ti-users" style={{fontSize:40,display:"block",marginBottom:12,color:"#c4b5fd"}}/>
               <p style={{margin:"0 0 16px",fontSize:15,color:"#6b7280"}}>Agregá tu primer alumno para comenzar</p>
@@ -709,18 +730,36 @@ export default function App() {
           </div>
         )}
 
-        {/* STUDENTS LIST */}
+        {view==="priority"&&(
+          <div style={{padding:"28px",maxWidth:760}}>
+            <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 6px",color:"#111827"}}>Alta Prioridad</h1>
+            <div style={{fontSize:13,color:"#6b7280",marginBottom:22}}>{highPriorityItems.length} tarea{highPriorityItems.length!==1?"s":""} de alta prioridad</div>
+            {highPriorityItems.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>¡Sin tareas de alta prioridad! ✓</div>
+            :highPriorityItems.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>
+        )}
+
+        {view==="alerts"&&(
+          <div style={{padding:"28px",maxWidth:760}}>
+            <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 6px",color:"#111827"}}>Alertas Vencidas</h1>
+            <div style={{fontSize:13,color:"#6b7280",marginBottom:22}}>{overdueItems.length} alerta{overdueItems.length!==1?"s":""} vencida{overdueItems.length!==1?"s":""}</div>
+            {overdueItems.length===0?<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>¡Sin alertas vencidas! ✓</div>
+            :overdueItems.sort((a,b)=>(a.alertDate||"").localeCompare(b.alertDate||"")).map(item=>{const stud=students.find(s=>s.id===item.locationId);const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} studentName={stud?.name} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText}/>;})}</div>
+        )}
+
         {view==="students"&&(
           <div style={{padding:"28px",maxWidth:740}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22,paddingLeft:isMobile?0:48}}>
               <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>Mis Alumnos</h1>
-              <button onClick={()=>setShowNewStudentModal(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#8b5cf6",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                <i className="ti ti-user-plus" style={{fontSize:14}}/> Agregar alumno
-              </button>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setShowBulkImport(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"#f5f3ff",color:"#6d28d9",border:"1px solid #ddd6fe",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                  <i className="ti ti-table-import" style={{fontSize:14}}/> Importar lista
+                </button>
+                <button onClick={()=>setShowNewStudentModal(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#8b5cf6",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                  <i className="ti ti-user-plus" style={{fontSize:14}}/> Agregar alumno
+                </button>
+              </div>
             </div>
-            {students.length===0&&<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>
-              Aún no hay alumnos registrados.
-            </div>}
+            {students.length===0&&<div style={{textAlign:"center",padding:"48px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay alumnos registrados.</div>}
             {students.map(stud=>{
               const sv=visits.filter(v=>v.locationId===stud.id);
               const so=openItems.filter(i=>i.locationId===stud.id).length;
@@ -729,9 +768,7 @@ export default function App() {
               const ap=[...new Set(openItems.filter(i=>i.locationId===stud.id&&i.liceo).map(i=>i.liceo))];
               return <div key={stud.id} style={{background:"#fff",border:"1px solid #f3f4f6",borderRadius:12,padding:"14px 16px",marginBottom:8,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
                 {editingStudId===stud.id?<div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <input value={editStudName} onChange={e=>setEditStudName(e.target.value)}
-                    onKeyDown={e=>{if(e.key==="Enter")saveStudName(stud.id);if(e.key==="Escape")setEditingStudId(null);}}
-                    autoFocus style={{...bInp,flex:1,fontSize:15,fontWeight:600}}/>
+                  <input value={editStudName} onChange={e=>setEditStudName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveStudName(stud.id);if(e.key==="Escape")setEditingStudId(null);}} autoFocus style={{...bInp,flex:1,fontSize:15,fontWeight:600}}/>
                   <button onClick={()=>saveStudName(stud.id)} style={{padding:"8px 16px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>✓ Guardar</button>
                   <button onClick={()=>setEditingStudId(null)} style={{padding:"8px 10px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:8,cursor:"pointer"}}>✕</button>
                 </div>:<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={()=>{setSelStudId(stud.id);setView("student");}}>
@@ -739,12 +776,10 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:15,fontWeight:700,color:"#111827"}}>{stud.name}</span>
                       {stud.ci&&<span style={{fontSize:11,color:"#8b5cf6",background:"#f5f3ff",padding:"1px 8px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {stud.ci}</span>}
-                      <button onClick={e=>{e.stopPropagation();setEditingStudId(stud.id);setEditStudName(stud.name);}}
-                        style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
+                      <button onClick={e=>{e.stopPropagation();setEditingStudId(stud.id);setEditStudName(stud.name);}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                         <i className="ti ti-pencil" style={{fontSize:11}}/>Renombrar
                       </button>
-                      <button onClick={e=>{e.stopPropagation();setEditCIModal(stud);}}
-                        style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
+                      <button onClick={e=>{e.stopPropagation();setEditCIModal(stud);}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"2px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                         <i className="ti ti-id-badge" style={{fontSize:11}}/>{stud.ci?"Editar CI":"+ CI"}
                       </button>
                     </div>
@@ -764,7 +799,6 @@ export default function App() {
           </div>
         )}
 
-        {/* STUDENT DETAIL */}
         {view==="student"&&selStud&&(
           <div style={{padding:"28px",maxWidth:740}}>
             <button onClick={()=>setView("students")} style={{background:"none",border:"none",cursor:"pointer",color:"#6b7280",fontSize:13,padding:"0 0 14px",display:"flex",alignItems:"center",gap:4,fontWeight:500,paddingLeft:isMobile?0:48}}>
@@ -775,8 +809,7 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                   <h1 style={{fontSize:22,fontWeight:700,margin:0,color:"#111827"}}>{selStud.name}</h1>
                   {selStud.ci&&<span style={{fontSize:12,color:"#8b5cf6",background:"#f5f3ff",padding:"2px 10px",borderRadius:8,border:"1px solid #ddd6fe",fontWeight:500}}>CI: {selStud.ci}</span>}
-                  <button onClick={()=>setEditCIModal(selStud)}
-                    style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
+                  <button onClick={()=>setEditCIModal(selStud)} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",cursor:"pointer",fontWeight:500}}>
                     <i className="ti ti-id-badge" style={{fontSize:11}}/>{selStud.ci?"Editar CI":"+ CI"}
                   </button>
                 </div>
@@ -791,36 +824,10 @@ export default function App() {
               {studOpen.map(item=>{const v=visits.find(v=>v.id===item.visitId);return <ItemCard key={item.id} item={item} visitDate={v?.date} onResolve={resolveItem} onAddComment={addComment} onEditItem={editItemText} showStudent={false}/>;})}</div>}
             <div style={{fontSize:12,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>Historial de gestiones</div>
             {studVisits.length===0&&<div style={{textAlign:"center",padding:"32px",color:"#9ca3af",fontSize:14,background:"#f9fafb",borderRadius:12,border:"1px dashed #e5e7eb"}}>Aún no hay gestiones registradas.</div>}
-            {studVisits.map(visit=>{
-              const vis=items.filter(i=>i.visitId===visit.id);
-              const oc=vis.filter(i=>i.status==="abierto").length;
-              const bl=visit.bullets?.length?visit.bullets.filter(b=>b.trim()):(visit.notes?[visit.notes]:[]);
-              return <div key={visit.id} style={{background:"#fff",border:"1px solid #f3f4f6",borderRadius:12,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:vis.length?10:0}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:700,color:"#111827",marginBottom:bl.length?4:0}}>{fmt(visit.date)}</div>
-                    <BulletDisplay bullets={bl}/><PhotoStrip photos={visit.photos}/>
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0,marginLeft:12}}>
-                    {vis.length>0&&<span style={{fontSize:11,fontWeight:600,color:oc>0?"#b45309":"#166534",background:oc>0?"#fffbeb":"#f0fdf4",padding:"2px 8px",borderRadius:8,border:`1px solid ${oc>0?"#fcd34d":"#86efac"}`}}>{oc>0?`${oc} abierta${oc!==1?"s":""}` :"✓ Todo ok"}</span>}
-                    <button onClick={()=>startEdit(visit.id)} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,padding:"5px 11px",border:"1px solid #e5e7eb",background:"#f9fafb",color:"#6b7280",borderRadius:7,cursor:"pointer",fontWeight:500}}>
-                      <i className="ti ti-pencil" style={{fontSize:12}}/> Editar
-                    </button>
-                  </div>
-                </div>
-                {vis.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #f9fafb",flexWrap:"wrap"}}>
-                  <TypeBadge type={item.type} size="sm"/>{item.liceo&&<LiceoChip liceo={item.liceo} size="sm"/>}
-                  <span style={{fontSize:13,color:"#374151",flex:1,minWidth:120}}>{item.description}</span>
-                  {(item.photos||[]).length>0&&<span style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-photo" style={{fontSize:12}}/>{item.photos.length}</span>}
-                  {(item.comments||[]).length>0&&<span style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-message-circle" style={{fontSize:12}}/>{item.comments.length}</span>}
-                  {item.status==="abierto"?<button onClick={()=>resolveItem(item.id)} style={{fontSize:11,padding:"2px 9px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:6,cursor:"pointer",flexShrink:0,fontWeight:600}}>✓ Resolver</button>:<span style={{fontSize:11,color:"#166534",fontWeight:700}}>✓ Resuelto</span>}
-                </div>)}
-              </div>;
-            })}
+            {studVisits.map(visit=><VisitCard key={visit.id} visit={visit} items={items} onStartEdit={startEdit} onAddVisitComment={addVisitComment} onResolveVisitNotes={resolveVisitNotes} onResolveItem={resolveItem} onAddComment={addComment} onEditItemText={editItemText}/>)}
           </div>
         )}
 
-        {/* NEW VISIT */}
         {view==="newvisit"&&(
           <div style={{padding:"28px",maxWidth:680}}>
             <h1 style={{fontSize:22,fontWeight:700,margin:"0 0 22px",color:"#111827",paddingLeft:isMobile?0:48}}>Nueva Gestión</h1>
@@ -830,7 +837,7 @@ export default function App() {
                   <label style={{fontSize:12,fontWeight:600,color:"#374151",display:"block",marginBottom:5}}>Alumno *</label>
                   <select value={nvStudId} onChange={e=>setNvStudId(e.target.value)} style={bInp}>
                     <option value="">Seleccioná un alumno</option>
-                    {students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                    {students.map(s=><option key={s.id} value={s.id}>{s.name}{s.ci?` (${s.ci})`:""}</option>)}
                   </select>
                 </div>
                 <div>
@@ -854,6 +861,7 @@ export default function App() {
               {prevOpen.map(item=>{const v=visits.find(v=>v.id===item.visitId);return(
                 <div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #fde68a",flexWrap:"wrap"}}>
                   <TypeBadge type={item.type} size="sm"/>{item.liceo&&<LiceoChip liceo={item.liceo} size="sm"/>}
+                  {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
                   <span style={{fontSize:13,flex:1,minWidth:120,color:"#374151"}}>{item.description}</span>
                   <span style={{fontSize:11,color:"#9ca3af"}}>{fmt(v?.date)}</span>
                   <button onClick={()=>resolveItem(item.id)} style={{fontSize:11,padding:"3px 10px",background:"#f0fdf4",color:"#166534",border:"1px solid #86efac",borderRadius:6,cursor:"pointer",flexShrink:0,fontWeight:600}}>✓ Resolver</button>
@@ -866,7 +874,9 @@ export default function App() {
               {nvItems.map((item,idx)=><div key={item.id||idx} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 14px",marginBottom:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <TypeBadge type={item.type} size="sm"/>{item.liceo&&<LiceoChip liceo={item.liceo} size="sm"/>}
+                  {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
                   <span style={{fontSize:13,flex:1,minWidth:120,color:"#374151"}}>{item.description}</span>
+                  {item.alertDate&&<span style={{fontSize:11,color:"#6b7280",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-bell" style={{fontSize:11}}/>{fmtS(item.alertDate)}</span>}
                   <button onClick={()=>setNvItems(p=>p.filter((_,i)=>i!==idx))} style={{background:"none",border:"none",cursor:"pointer",color:"#d1d5db",fontSize:14,padding:2,flexShrink:0}}><i className="ti ti-x"/></button>
                 </div>
                 <PhotoStrip photos={item.photos}/>
@@ -879,7 +889,6 @@ export default function App() {
           </div>
         )}
 
-        {/* EDIT VISIT */}
         {view==="editvisit"&&editVid&&(
           <div style={{padding:"28px",maxWidth:700}}>
             <button onClick={()=>setView("student")} style={{background:"none",border:"none",cursor:"pointer",color:"#6b7280",fontSize:13,padding:"0 0 14px",display:"flex",alignItems:"center",gap:4,fontWeight:500}}>
@@ -917,6 +926,18 @@ export default function App() {
                 {editItemId===item.id?<div>
                   <InlineTA type={eiType} setType={setEiType} liceo={eiLiceo} setLiceo={setEiLiceo} allFormLiceos={allFormLiceos} allTypeOptions={allTypeOptions} {...sharedTA}/>
                   <input value={eiDesc} onChange={e=>setEiDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEditItem(item.id)} style={{...sInp,marginBottom:10}} placeholder="Descripción…"/>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                    <div>
+                      <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Prioridad</label>
+                      <select value={eiPriority} onChange={e=>setEiPriority(e.target.value)} style={sInp}>
+                        <option value="alta">🔴 Alta</option><option value="media">🟡 Media</option><option value="baja">🔵 Baja</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4,fontWeight:500}}>Alerta para el día</label>
+                      <input type="date" value={eiAlertDate} onChange={e=>setEiAlertDate(e.target.value)} style={sInp}/>
+                    </div>
+                  </div>
                   <div style={{marginBottom:10}}>
                     <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:5,fontWeight:500}}>Fotos</label>
                     <PhotoPicker photos={eiPhotos} onChange={setEiPhotos} compact/>
@@ -928,7 +949,9 @@ export default function App() {
                 </div>:<div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <TypeBadge type={item.type} size="sm"/>{item.liceo&&<LiceoChip liceo={item.liceo} size="sm"/>}
+                    {item.priority&&item.priority!=="media"&&<PriorityBadge priority={item.priority} size="sm"/>}
                     <span style={{fontSize:13,flex:1,minWidth:120,color:"#374151"}}>{item.description}</span>
+                    {item.alertDate&&<span style={{fontSize:11,color:"#6b7280",display:"flex",alignItems:"center",gap:3}}><i className="ti ti-bell" style={{fontSize:11}}/>{fmtS(item.alertDate)}</span>}
                     {item.status==="resuelto"&&<span style={{fontSize:11,color:"#166534",fontWeight:700}}>✓ Resuelto</span>}
                     <button onClick={()=>startEditItem(item)} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:13,padding:"2px 4px"}}><i className="ti ti-pencil" style={{fontSize:13}}/></button>
                     <button onClick={()=>deleteEditItem(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13,padding:"2px 4px"}}><i className="ti ti-trash" style={{fontSize:13}}/></button>
@@ -948,7 +971,6 @@ export default function App() {
           </div>
         )}
 
-        {/* PENDING / RESOLVED */}
         {view==="pending"&&(
           <div style={{padding:"28px",maxWidth:760}}>
             <div style={{display:"flex",gap:0,marginBottom:22,background:"#f3f4f6",borderRadius:10,padding:4,width:"fit-content"}}>
@@ -964,20 +986,20 @@ export default function App() {
                 {(showResolved?resolvedFiltered:pendFiltered).length} tarea{(showResolved?resolvedFiltered:pendFiltered).length!==1?"s":""}
                 {fLiceo&&<><span>·</span><LiceoChip liceo={fLiceo} size="sm"/></>}
                 {fStud&&<><span>·</span><span>{students.find(s=>s.id===fStud)?.name}</span></>}
+                {fPriority&&<><span>·</span><PriorityBadge priority={fPriority} size="sm"/></>}
               </div>
-              {(fLiceo||fType||fStud)&&<button onClick={()=>{setFLiceo("");setFType("");setFStud("");}}
+              {(fLiceo||fType||fStud||fPriority)&&<button onClick={()=>{setFLiceo("");setFType("");setFStud("");setFPriority("");}}
                 style={{fontSize:12,padding:"5px 12px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:7,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontWeight:500}}>
                 <i className="ti ti-x" style={{fontSize:12}}/> Limpiar
               </button>}
             </div>
-            {(showResolved?allResolvedLiceos:allLiceos).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16,paddingBottom:16,borderBottom:"1px solid #f3f4f6"}}>
+            {(showResolved?allResolvedLiceos:allLiceos).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12,paddingBottom:12,borderBottom:"1px solid #f3f4f6"}}>
               <button onClick={()=>setFLiceo("")} style={{fontSize:12,padding:"4px 13px",borderRadius:20,border:`1px solid ${!fLiceo?"#8b5cf6":"#e5e7eb"}`,background:!fLiceo?"#f5f3ff":"transparent",color:!fLiceo?"#6d28d9":"#6b7280",cursor:"pointer",fontWeight:!fLiceo?700:400}}>Todos</button>
               {(showResolved?allResolvedLiceos:allLiceos).map(liceo=>{const p=liceoPal(liceo);const active=fLiceo===liceo;return(
-                <button key={liceo} onClick={()=>setFLiceo(active?"":liceo)}
-                  style={{fontSize:12,padding:"4px 13px",borderRadius:20,border:`1px solid ${active?p.border:"#e5e7eb"}`,background:active?p.bg:"transparent",color:active?p.fg:"#6b7280",cursor:"pointer",fontWeight:active?700:400}}>{liceo}</button>
+                <button key={liceo} onClick={()=>setFLiceo(active?"":liceo)} style={{fontSize:12,padding:"4px 13px",borderRadius:20,border:`1px solid ${active?p.border:"#e5e7eb"}`,background:active?p.bg:"transparent",color:active?p.fg:"#6b7280",cursor:"pointer",fontWeight:active?700:400}}>{liceo}</button>
               );})}
             </div>}
-            {!showResolved&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+            {!showResolved&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
               <select value={fType} onChange={e=>setFType(e.target.value)} style={sInp}>
                 <option value="">Todos los tipos</option>
                 {allTypeOptions.filter(t=>allItemTypes.includes(t.key)).map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
@@ -985,6 +1007,10 @@ export default function App() {
               <select value={fStud} onChange={e=>setFStud(e.target.value)} style={sInp}>
                 <option value="">Todos los alumnos</option>
                 {students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select value={fPriority} onChange={e=>setFPriority(e.target.value)} style={sInp}>
+                <option value="">Toda prioridad</option>
+                <option value="alta">🔴 Alta</option><option value="media">🟡 Media</option><option value="baja">🔵 Baja</option>
               </select>
             </div>}
             {showResolved&&<div style={{marginBottom:20}}>
