@@ -314,11 +314,18 @@ function NewStudentModal({onConfirm,onCancel}) {
   </div>;
 }
 
-function BulkImportModal({onConfirm,onCancel}) {
+function BulkImportModal({onConfirm,onCancel,existingStudents=[]}) {
   const [preview,setPreview]=useState([]);
   const [error,setError]=useState("");
   const [fileName,setFileName]=useState("");
   const [loading,setLoading]=useState(false);
+
+  const normStr=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+  function isDuplicate(nombre,ci){
+    if(!ci)return false;
+    return existingStudents.some(e=>normStr(e.name)===normStr(nombre)&&e.ci&&normStr(e.ci)===normStr(ci));
+  }
 
   async function handleFile(e) {
     const file=e.target.files[0]; if(!file)return;
@@ -329,91 +336,83 @@ function BulkImportModal({onConfirm,onCancel}) {
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
       if(!rows.length){setError("El archivo está vacío.");setLoading(false);return;}
-
-      // Normalize headers: find columns by partial/case-insensitive match
-      const norm=s=>String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
-      const sampleRow=rows[0];
-      const headers=Object.keys(sampleRow);
-      const findCol=(keywords)=>headers.find(h=>keywords.some(k=>norm(h).includes(k)))||null;
-
+      const headers=Object.keys(rows[0]);
+      const findCol=kws=>headers.find(h=>kws.some(k=>normStr(h).includes(k)))||null;
       const colNombre =findCol(["nombre completo","nombre","name"]);
       const colLiceo  =findCol(["liceo","institucion","colegio","centro"]);
       const colCI     =findCol(["cedula","ci","documento","doc"]);
-      const colCohorte=findCol(["cohorte","promocion","año","año de ingreso","generacion"]);
-
+      const colCohorte=findCol(["cohorte","promocion","año","generacion"]);
       if(!colNombre){setError("No se encontró la columna 'Nombre completo'. Verificá los encabezados.");setLoading(false);return;}
-
       const results=[]; const errs=[];
       rows.forEach((row,i)=>{
         const nombre  =String(row[colNombre]  ||"").trim();
         const liceo   =colLiceo  ?String(row[colLiceo]  ||"").trim():"";
         const ci      =colCI     ?String(row[colCI]     ||"").trim():"";
         const cohorte =colCohorte?String(row[colCohorte]||"").trim():"";
-        if(!nombre||nombre.length<2){errs.push(`Fila ${i+2}: nombre vacío o muy corto`);return;}
-        results.push({nombre,liceo,ci,cohorte});
+        if(!nombre||nombre.length<2){errs.push(`Fila ${i+2}: nombre vacío`);return;}
+        results.push({nombre,liceo,ci,cohorte,dup:isDuplicate(nombre,ci)});
       });
       if(errs.length&&!results.length){setError(errs.join(" · "));setLoading(false);return;}
       if(errs.length) setError(`${errs.length} fila${errs.length>1?"s":""} omitida${errs.length>1?"s":""}: ${errs.slice(0,3).join(" · ")}${errs.length>3?"…":""}`);
       setPreview(results);
-    } catch(err) {
-      setError("No se pudo leer el archivo. Asegurate de que sea un .xlsx o .xls válido.");
-      console.error(err);
-    }
-    setLoading(false);
-    e.target.value="";
+    } catch(err) { setError("No se pudo leer el archivo. Asegurate de que sea un .xlsx o .xls válido."); console.error(err); }
+    setLoading(false); e.target.value="";
   }
+
+  const dupCount=preview.filter(r=>r.dup).length;
+  const newCount=preview.filter(r=>!r.dup).length;
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
     <div style={{background:"#fff",borderRadius:16,padding:"24px",width:"100%",maxWidth:540,boxShadow:"0 8px 40px rgba(0,0,0,.18)",maxHeight:"90vh",display:"flex",flexDirection:"column",gap:14}}>
       <div>
         <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>Carga masiva desde Excel</div>
-        <div style={{fontSize:13,color:"#6b7280"}}>El archivo debe tener estas columnas (en cualquier orden):</div>
+        <div style={{fontSize:13,color:"#6b7280"}}>Columnas reconocidas (en cualquier orden):</div>
         <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
           {["Nombre completo","Nombre de Liceo","Cédula","Cohorte"].map(col=><span key={col} style={{fontSize:12,background:"#f5f3ff",color:"#6d28d9",padding:"2px 10px",borderRadius:10,border:"1px solid #ddd6fe",fontWeight:500}}>{col}</span>)}
         </div>
-        <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Liceo, Cédula y Cohorte son opcionales.</div>
+        <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>Liceo, Cédula y Cohorte son opcionales. Duplicados se detectan por nombre + CI iguales.</div>
       </div>
-
-      {/* File drop zone */}
-      <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"28px 16px",border:"2px dashed #ddd6fe",borderRadius:12,cursor:"pointer",background:"#faf5ff",transition:"border-color .15s"}}>
+      <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"28px 16px",border:"2px dashed #ddd6fe",borderRadius:12,cursor:"pointer",background:"#faf5ff"}}>
         <i className="ti ti-file-spreadsheet" style={{fontSize:32,color:"#8b5cf6"}}/>
         <div style={{fontSize:14,fontWeight:600,color:"#374151"}}>{fileName||"Hacé click para elegir el archivo"}</div>
         <div style={{fontSize:12,color:"#9ca3af"}}>.xlsx o .xls</div>
         <input type="file" accept=".xlsx,.xls" onChange={handleFile} style={{display:"none"}}/>
       </label>
-
       {loading&&<div style={{fontSize:13,color:"#8b5cf6",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-loader-2 ti-spin" style={{fontSize:15}}/>Procesando…</div>}
       {error&&<div style={{fontSize:12,color:"#b91c1c",background:"#fef2f2",padding:"8px 12px",borderRadius:8,border:"1px solid #fca5a5"}}>{error}</div>}
-
-      {preview.length>0&&(
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",gap:8}}>
-          <div style={{fontSize:12,color:"#166534",background:"#f0fdf4",padding:"6px 12px",borderRadius:8,border:"1px solid #86efac",fontWeight:500}}>
-            ✓ {preview.length} alumno{preview.length!==1?"s":""} listos para importar
+      {preview.length>0&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={{fontSize:12,color:"#166534",background:"#f0fdf4",padding:"6px 12px",borderRadius:8,border:"1px solid #86efac",fontWeight:500,flex:1}}>
+            ✓ {newCount} alumno{newCount!==1?"s":""} nuevo{newCount!==1?"s":""} para importar
           </div>
-          <div style={{overflowY:"auto",maxHeight:180,border:"1px solid #e5e7eb",borderRadius:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr style={{background:"#f9fafb",position:"sticky",top:0}}>
-                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Nombre</th>
-                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Liceo</th>
-                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>CI</th>
-                <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Cohorte</th>
-              </tr></thead>
-              <tbody>{preview.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #f3f4f6"}}>
-                <td style={{padding:"5px 10px",color:"#111827"}}>{r.nombre}</td>
-                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.liceo||"—"}</td>
-                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.ci||"—"}</td>
-                <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.cohorte||"—"}</td>
-              </tr>)}</tbody>
-            </table>
-          </div>
+          {dupCount>0&&<div style={{fontSize:12,color:"#92400e",background:"#fef3c7",padding:"6px 12px",borderRadius:8,border:"1px solid #fcd34d",fontWeight:500,flex:1}}>
+            ⚠ {dupCount} duplicado{dupCount!==1?"s":""} — se omitirán
+          </div>}
         </div>
-      )}
-
+        <div style={{overflowY:"auto",maxHeight:200,border:"1px solid #e5e7eb",borderRadius:8}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{background:"#f9fafb",position:"sticky",top:0}}>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Nombre</th>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Liceo</th>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>CI</th>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>Cohorte</th>
+              <th style={{padding:"6px 4px",borderBottom:"1px solid #e5e7eb"}}></th>
+            </tr></thead>
+            <tbody>{preview.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #f3f4f6",background:r.dup?"#fffbeb":"transparent",opacity:r.dup?0.6:1}}>
+              <td style={{padding:"5px 10px",color:r.dup?"#92400e":"#111827"}}>{r.nombre}</td>
+              <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.liceo||"—"}</td>
+              <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.ci||"—"}</td>
+              <td style={{padding:"5px 10px",color:"#6b7280"}}>{r.cohorte||"—"}</td>
+              <td style={{padding:"5px 4px"}}>{r.dup&&<span style={{fontSize:10,background:"#fef3c7",color:"#92400e",padding:"1px 6px",borderRadius:6,border:"1px solid #fcd34d",fontWeight:600,whiteSpace:"nowrap"}}>duplicado</span>}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>}
       <div style={{display:"flex",gap:8,marginTop:"auto"}}>
         <button onClick={onCancel} style={{flex:1,padding:"9px",border:"1px solid #e5e7eb",background:"transparent",color:"#6b7280",borderRadius:9,cursor:"pointer",fontSize:14}}>Cancelar</button>
-        <button onClick={()=>preview.length>0&&onConfirm(preview)} disabled={preview.length===0}
-          style={{flex:2,padding:"9px",background:preview.length>0?"#8b5cf6":"#f3f4f6",color:preview.length>0?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:preview.length>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
-          Importar {preview.length>0?`${preview.length} alumnos`:""}
+        <button onClick={()=>newCount>0&&onConfirm(preview.filter(r=>!r.dup))} disabled={newCount===0}
+          style={{flex:2,padding:"9px",background:newCount>0?"#8b5cf6":"#f3f4f6",color:newCount>0?"#fff":"#9ca3af",border:"none",borderRadius:9,cursor:newCount>0?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>
+          {newCount>0?`Importar ${newCount} alumno${newCount!==1?"s":""}`:"Sin alumnos nuevos"}
         </button>
       </div>
     </div>
@@ -703,12 +702,15 @@ export default function App() {
   function addStudent(nombre,ci,liceo,cohorte){ const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""}; fbSetStudent(s.id,s); setShowNewStudentModal(false); }
   async function bulkAddStudents(list){
     try {
-      const batch=writeBatch(db);
-      list.forEach(({nombre,ci,liceo,cohorte})=>{
-        const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""};
-        batch.set(studentDoc(s.id),s);
-      });
-      await batch.commit();
+      const CHUNK=400;
+      for(let i=0;i<list.length;i+=CHUNK){
+        const batch=writeBatch(db);
+        list.slice(i,i+CHUNK).forEach(({nombre,ci,liceo,cohorte})=>{
+          const s={id:genId(),name:nombre,ci:ci||"",liceo:liceo||"",cohorte:cohorte||""};
+          batch.set(studentDoc(s.id),s);
+        });
+        await batch.commit();
+      }
       setShowBulkImport(false);
     } catch(e){
       console.error(e);
@@ -857,7 +859,7 @@ export default function App() {
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:"system-ui,sans-serif",background:"#f8f9fb",position:"relative"}}>
       {showNewStudentModal&&<NewStudentModal onConfirm={addStudent} onCancel={()=>setShowNewStudentModal(false)}/>}
-      {showBulkImport&&<BulkImportModal onConfirm={bulkAddStudents} onCancel={()=>setShowBulkImport(false)}/>}
+      {showBulkImport&&<BulkImportModal onConfirm={bulkAddStudents} onCancel={()=>setShowBulkImport(false)} existingStudents={students}/>}
       {editCIModal&&<EditCIModal student={editCIModal} onConfirm={ci=>saveStudCI(editCIModal.id,ci)} onCancel={()=>setEditCIModal(null)}/>}
 
       {sidebarOpen&&isMobile&&<div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",zIndex:40}}/>}
